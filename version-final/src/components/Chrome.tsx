@@ -34,17 +34,21 @@ export function Chrome() {
           <Logo />
           <div className="leading-tight"><div className="font-semibold tracking-tight">Linyue</div><div className="muted text-[11px]">Descargador universal local</div></div>
         </Link>
-        <div className="hidden md:block">
-          <Segmented options={TABS.map((t) => ({ value: t.href, label: <span className="flex items-center gap-1.5"><t.icon size={15} strokeWidth={1.5} className="ico" />{t.label}</span> }))} value={current} onChange={(v) => router.push(v)} />
-        </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Las pestañas van en el bloque DERECHO, no centradas: la isla flota
+              fija en el centro superior y las tapaba (se comía "Recientes").
+              Se muestran a partir de xl, donde ya no hay riesgo de choque; por
+              debajo de eso manda la barra inferior. */}
+          <div className="hidden xl:block">
+            <Segmented options={TABS.map((t) => ({ value: t.href, label: <span className="flex items-center gap-1.5"><t.icon size={15} strokeWidth={1.5} className="ico" />{t.label}</span> }))} value={current} onChange={(v) => router.push(v)} />
+          </div>
           <button onClick={toggleMute} aria-label={muted ? "Activar sonido" : "Silenciar"} className="btn btn-glass h-10 w-10 sq-pill">{muted ? <VolumeX size={17} strokeWidth={1.5} className="ico" /> : <Volume2 size={17} strokeWidth={1.5} className="ico" />}</button>
           <button onClick={toggleTheme} aria-label="Cambiar tema" className="btn btn-glass h-10 w-10 sq-pill">{theme === "dark" ? <Sun size={17} strokeWidth={1.5} className="ico" /> : <Moon size={17} strokeWidth={1.5} className="ico" />}</button>
         </div>
       </header>
       {/* Tab bar flotante inferior en móvil */}
-      <nav className="fixed inset-x-3 bottom-3 z-40 md:hidden">
-        <div className="glass glass-strong sq flex justify-around p-1.5">
+      <nav className="fixed inset-x-3 bottom-3 z-40 xl:hidden">
+        <div className="tabbar sq flex justify-around p-1.5">
           {TABS.map((t) => (
             <Link key={t.href} href={t.href} className={`btn flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[11px] sq-sm ${current === t.href ? "bg-[var(--fill-2)]" : "muted"}`}>
               <t.icon size={20} strokeWidth={1.5} />{t.label}
@@ -70,8 +74,13 @@ function Island() {
     if (d.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) d.startViewTransition(() => setOpen((o) => !o)); else setOpen((o) => !o);
   };
 
+  // La isla va ARRIBA en móvil y CENTRO-ABAJO en escritorio: en el header de
+  // escritorio viven las pestañas, y cualquier cosa centrada arriba choca con
+  // ellas (medido: a 1280 px el pill se comía "Descargador"). Abajo, sobre el
+  // vacío, no estorba a nadie. Los banners van en su propio contenedor fijo.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2">
+    <>
+      <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2 xl:top-auto xl:bottom-5">
       <div
         role="button" tabIndex={0} aria-expanded={expanded} aria-label="Isla de descargas"
         onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onClick={toggle} onKeyDown={(e) => e.key === "Enter" && toggle()}
@@ -114,8 +123,10 @@ function Island() {
           </div>
         )}
       </div>
-      {/* Banners iOS que nacen de la isla */}
-      <div aria-live="polite" className="flex flex-col items-center gap-2">
+    </div>
+      {/* Banners: contenedor propio para que no se muevan cuando la isla cambia
+          de sitio entre móvil y escritorio. aria-live sigue aquí. */}
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2">
         {toasts.map((t) => (
           <div key={t.id} className="banner-in glass glass-strong pointer-events-auto flex w-[min(380px,92vw)] items-start gap-3 p-3 sq-sm" style={{ transformOrigin: "top center" }}>
             {t.kind === "ok" ? <CheckCircle2 className="mt-0.5 text-emerald-400" size={20} strokeWidth={1.5} /> : t.kind === "err" ? <AlertTriangle className="mt-0.5 text-rose-400" size={20} strokeWidth={1.5} /> : <Info className="mt-0.5 text-violet-300" size={20} strokeWidth={1.5} />}
@@ -123,6 +134,6 @@ function Island() {
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }

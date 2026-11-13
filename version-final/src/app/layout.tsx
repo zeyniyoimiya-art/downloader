@@ -40,7 +40,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AppProvider>
           <Ambient />
           <Chrome />
-          <main className="mx-auto max-w-6xl px-4 pb-32 pt-10 sm:px-6">{children}</main>
+          {/* pb-40 en móvil: la barra flotante mide ~64 px y se comía la última fila de Ajustes */}
+          <main className="mx-auto max-w-6xl px-4 pb-40 pt-10 sm:px-6 xl:pb-32">{children}</main>
           {/* Service worker: cachea solo la UI, nunca descargas */}
           <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator&&location.hostname.match(/^(localhost|127\\.0\\.0\\.1)$/))addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))` }} />
         </AppProvider>

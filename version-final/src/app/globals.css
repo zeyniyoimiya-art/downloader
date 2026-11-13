@@ -99,6 +99,15 @@ body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smo
 .glass-strong { background: var(--glass-strong); }
 .refract { filter: url(#ly-refract); }
 
+/* Barra de pestañas móvil: el vidrio normal (68 % de opacidad) dejaba leer el
+   texto de detrás al hacer scroll. Aquí se mezcla con el color de fondo. */
+.tabbar {
+  background: color-mix(in oklab, var(--bg) 74%, var(--glass-strong));
+  backdrop-filter: blur(30px) saturate(170%); -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow);
+}
+
 /* Scrim sutil para contraste AA sobre vidrio */
 .scrim { background: var(--scrim); }
 
@@ -160,6 +169,21 @@ body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smo
 .odo { display: inline-flex; overflow: hidden; height: 1em; line-height: 1em; vertical-align: -0.1em; }
 .odo > span { display: flex; flex-direction: column; transition: transform 900ms var(--spring); }
 
+/* Slider de rango: el control nativo se veía como una barra negra gruesa en
+   modo claro. Track y thumb con nuestros tokens. */
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: var(--fill-2); outline: none; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 999px;
+  background: linear-gradient(135deg, #a855f7, #ec4899);
+  border: 1px solid rgba(255,255,255,.55);
+  box-shadow: 0 2px 10px rgba(236,72,153,.55); cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px;
+  background: linear-gradient(135deg, #a855f7, #ec4899); cursor: pointer;
+}
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--fill-2); }
+
 /* Scrollbars discretas */
 * { scrollbar-width: thin; scrollbar-color: rgba(168,85,247,.35) transparent; }
 
@@ -167,7 +191,11 @@ body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smo
 .lens { position: fixed; left: 0; top: 0; width: 34px; height: 34px; border-radius: 999px; pointer-events: none; z-index: 9999;
   backdrop-filter: blur(1px) saturate(200%) brightness(1.15); -webkit-backdrop-filter: blur(1px) saturate(200%) brightness(1.15);
   border: 1px solid rgba(255,255,255,.5); box-shadow: inset 0 1px 6px rgba(255,255,255,.5), 0 6px 20px rgba(0,0,0,.25);
-  transition: width .4s var(--spring), height .4s var(--spring), opacity .3s; }
+  /* Arranca OCULTA y solo aparece al mover el puntero: antes flotaba quieta en
+     una esquina y parecía una mancha/sucio sobre la primera tarjeta. */
+  opacity: 0;
+  transition: width .4s var(--spring), height .4s var(--spring), opacity .35s ease; }
+.lens.active { opacity: 1; }
 .lens.big { width: 56px; height: 56px; }
 @media (pointer: coarse) { .lens { display: none; } }
 

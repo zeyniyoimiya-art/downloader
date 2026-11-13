@@ -9,11 +9,24 @@ import type { ConfigView } from "@/lib/client/types";
 import { AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platforms";
 
 import type { ReactNode } from "react";
-function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/**
+ * Fila de ajuste.
+ *
+ * El bug visual era este: los controles vivían en un `flex` sin ancho definido y
+ * cada uno traía el suyo (`w-64`, `w-24`, `auto`…), así que el borde derecho de
+ * la tarjeta quedaba en zigzag: la carpeta acababa en x=340, el select de audio
+ * en x=310, el de vídeo en x=280… La columna de controles ahora mide siempre lo
+ * mismo (300 px en escritorio) y los hijos se estiran a `w-full`, de modo que
+ * TODOS los campos terminan en la misma vertical.
+ */
+function Row({ label, hint, children, stack }: { label: string; hint?: string; children: ReactNode; stack?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] py-3.5 last:border-0">
-      <div><div className="text-sm font-medium">{label}</div>{hint && <div className="muted text-xs">{hint}</div>}</div>
-      <div className="flex items-center gap-2">{children}</div>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--line)] py-3.5 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        {hint && <div className="muted text-xs">{hint}</div>}
+      </div>
+      <div className={`flex w-full items-center justify-end gap-2 sm:w-[300px] ${stack ? "" : "shrink-0"}`}>{children}</div>
     </div>
   );
 }
@@ -37,7 +50,7 @@ export default function Ajustes() {
   const doScan = async () => { sfx.pop(); setScanning(true); await rescan(); setScanning(false); };
   const ok = engines.filter((e) => e.health === "ok").length;
 
-  const input = "mono scrim border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill";
+  const input = "mono scrim w-full min-w-0 border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill focus:border-fuchsia-400/50";
 
   return (
     <div className="space-y-6">
@@ -52,13 +65,15 @@ export default function Ajustes() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="p-5">
           <h2 className="mb-1 font-semibold">Descargas</h2>
-          <Row label="Carpeta de salida"><input className={`${input} w-64`} value={cfg.outputDir} onChange={(e) => set("outputDir", e.target.value)} aria-label="Carpeta de salida" /></Row>
-          <Row label="Audio por defecto"><select className={input} value={cfg.audioFormat} onChange={(e) => set("audioFormat", e.target.value)}>{AUDIO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Row>
-          <Row label="Video por defecto"><select className={input} value={cfg.videoFormat} onChange={(e) => set("videoFormat", e.target.value)}>{VIDEO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select>
-            <select className={input} value={cfg.videoQuality} onChange={(e) => set("videoQuality", e.target.value)}>{["best", "4320", "2160", "1440", "1080", "720", "480"].map((f) => <option key={f}>{f}</option>)}</select></Row>
-          <Row label="Fotos" hint="Conversión con Magick"><select className={input} value={cfg.photoFormat} onChange={(e) => set("photoFormat", e.target.value)}>{PHOTO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Row>
-          <Row label="Descargas en paralelo"><input type="range" min={1} max={8} value={cfg.concurrency} onChange={(e) => set("concurrency", +e.target.value)} className="accent-fuchsia-400" aria-label="Concurrencia" /><span className="mono w-4 text-sm">{cfg.concurrency}</span></Row>
-          <Row label="Límite de perfil" hint="Máx. elementos por canal/cuenta"><input type="number" min={1} max={5000} className={`${input} w-24`} value={cfg.profileLimit} onChange={(e) => set("profileLimit", +e.target.value || 1)} /></Row>
+          <Row label="Carpeta de salida"><input className={input} value={cfg.outputDir} onChange={(e) => set("outputDir", e.target.value)} aria-label="Carpeta de salida" /></Row>
+          <Row label="Audio por defecto"><select className={`${input} w-[148px]`} value={cfg.audioFormat} onChange={(e) => set("audioFormat", e.target.value)}>{AUDIO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Row>
+          <Row label="Video por defecto"><div className="grid w-full grid-cols-2 gap-2">
+              <select className={`${input} w-full`} value={cfg.videoFormat} onChange={(e) => set("videoFormat", e.target.value)} aria-label="Formato de vídeo">{VIDEO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select>
+              <select className={`${input} w-full`} value={cfg.videoQuality} onChange={(e) => set("videoQuality", e.target.value)} aria-label="Calidad de vídeo">{["best", "4320", "2160", "1440", "1080", "720", "480"].map((f) => <option key={f}>{f === "best" ? "máx" : f === "4320" ? "8K" : f === "2160" ? "4K" : `${f}p`}</option>)}</select>
+            </div></Row>
+          <Row label="Fotos" hint="Conversión con Magick"><select className={`${input} w-[148px]`} value={cfg.photoFormat} onChange={(e) => set("photoFormat", e.target.value)}>{PHOTO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Row>
+          <Row label="Descargas en paralelo"><input type="range" min={1} max={8} value={cfg.concurrency} onChange={(e) => set("concurrency", +e.target.value)} className="min-w-0 flex-1 accent-fuchsia-400" aria-label="Descargas en paralelo" /><span className="mono w-5 shrink-0 text-right text-sm tabular-nums">{cfg.concurrency}</span></Row>
+          <Row label="Límite de perfil" hint="Máx. elementos por canal/cuenta"><input type="number" min={1} max={5000} className={`${input} w-24 text-right`} value={cfg.profileLimit} onChange={(e) => set("profileLimit", +e.target.value || 1)} /></Row>
           <Row label="Modo turbo" hint="aria2c · 16 conexiones"><Toggle label="Modo turbo" checked={cfg.turbo} onChange={(v) => set("turbo", v)} /></Row>
           <Row label="No repetir lo ya descargado" hint="archive.txt + historial"><Toggle label="No repetir" checked={cfg.noRepeat} onChange={(v) => set("noRepeat", v)} /></Row>
           <Row label="lux para sitios CN" hint="Bilibili, Douyin, iQiyi…"><Toggle label="lux" checked={cfg.altEngineCN} onChange={(v) => set("altEngineCN", v)} /></Row>
@@ -84,7 +99,7 @@ export default function Ajustes() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 font-semibold"><Cpu size={17} strokeWidth={1.5} />Motor vivo <span className="mono muted text-xs">{ok}/12 listos</span></h2>
           <div className="flex items-center gap-2">
-            <input className={`${input} w-64`} value={cfg.vendorDir} onChange={(e) => set("vendorDir", e.target.value)} aria-label="Carpeta vendor" title="Carpeta /vendor" />
+            <input className={`${input} w-full sm:w-72`} value={cfg.vendorDir} onChange={(e) => set("vendorDir", e.target.value)} aria-label="Carpeta vendor" title="Carpeta /vendor" />
             <button onClick={doScan} className="btn btn-glass h-9 px-4 text-xs sq-pill"><RefreshCw size={14} className={scanning ? "animate-spin" : "ico"} />Re-escanear</button>
           </div>
         </div>

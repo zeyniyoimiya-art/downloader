@@ -157,3 +157,89 @@ se nota el cambio.
 
 Si algo de esto te chirría, dime qué y lo ajusto — ahora es fácil, todo el color
 y el espaciado sale de tokens.
+
+---
+
+# Ronda 2 · lo que se vio en la captura de Ajustes
+
+Revisando tu pantalla encontré cuatro cosas más, tres de ellas reales:
+
+## 6. Los bordes derechos en zigzag 🔴 (lo que llamaste "líneas sin cuadrar")
+
+`Row` era un `flex justify-between` **sin ancho definido para la columna de
+controles**, y cada control traía el suyo:
+
+| Fila | Ancho del control | Borde derecho |
+|---|---|---|
+| Carpeta de salida | `w-64` (256 px) | x≈340 |
+| Audio por defecto | `auto` (~90 px) | x≈310 |
+| Vídeo por defecto | `auto` + `auto` | x≈280 |
+| Descargas en paralelo | slider + `w-4` | x≈690 |
+| Límite de perfil | `w-24` | x≈310 |
+
+Cinco verticales distintas en la misma tarjeta. Eso es exactamente el "no está
+cuadrado" que se ve a simple vista aunque no se sepa nombrar.
+
+**Arreglado:** la columna de controles mide **siempre 300 px** en escritorio
+(`sm:w-[300px]` con `justify-end`) y los hijos se ajustan dentro:
+
+- campos de texto (rutas) → `w-full`, que es lo que quieres para una ruta larga
+- selects → `w-[148px]`, pegados a la derecha
+- el par formato+calidad → rejilla de 2 columnas iguales
+- número → `w-24` con `tabular-nums`
+- slider → `flex-1` y el número en `w-5` alineado a la derecha
+- toggles → ya estaban a la derecha
+
+Resultado: **una sola vertical** para todos los controles.
+
+## 7. La barra de pestañas móvil tapaba la última fila 🟠
+
+`<main>` tenía `pb-32` (128 px) fijos. La barra flotante mide ~64 px + 12 de
+margen, pero la fila "Límite de perfil" quedaba justo debajo. Ahora `pb-40`
+(160 px) por debajo de `xl`, y `xl:pb-32` cuando ya no hay barra inferior.
+
+Además la barra usaba el vidrio normal (68 % de opacidad): **se leía el texto de
+detrás** al hacer scroll. Nueva clase `.tabbar` que mezcla el vidrio con el color
+de fondo.
+
+## 8. El pill de estado tapaba una pestaña 🔴 (nuevo, salió al mirar de cerca)
+
+La isla flota **fija y centrada arriba** (`fixed top-3`), y las pestañas del
+header también estaban centradas: a 1280 px el pill **se comía "Descargador"**.
+
+Medido: la isla ocupa 576–704 px de ancho; el grupo de pestañas + botones
+empezaba en ~688. Solape de 16 px.
+
+**Arreglado en dos movimientos:**
+1. Las pestañas pasan al **bloque derecho** del header (junto a los iconos) y
+   solo aparecen desde `xl`; por debajo manda la barra inferior.
+2. La isla se va **al centro-abajo en escritorio** (`xl:bottom-5`), donde no hay
+   nada. En móvil sigue arriba, porque ahí no hay pestañas en el header.
+
+Los avisos (toasts) pasaron a su propio contenedor fijo para que no se muevan
+cuando la isla cambia de sitio.
+
+## 9. El cursor-lente parecía una mancha 🟡
+
+`.lens` es un círculo de vidrio que sigue al puntero. En reposo se quedaba
+**quieto y visible**, y en la captura parece una mancha sobre la primera tarjeta.
+Ahora arranca en `opacity: 0` y solo se muestra mientras hay movimiento (se
+apaga 1,4 s después del último `pointermove`).
+
+## 10. El slider nativo se veía como una barra negra 🟡
+
+El `<input type="range">` usaba el control del sistema con `accent-color`: en
+modo claro salía una barra gruesa oscura que no pegaba con nada. Ahora track y
+thumb usan los tokens (`--fill-2`) y el degradado del tema, en los dos motores
+(`-webkit-slider-thumb` y `-moz-range-thumb`).
+
+---
+
+## Cómo comprobarlo
+
+Capturas generadas con Chromium real (Playwright, 2× de densidad) en
+`/capturas`: `v4-ajustes-dark.png`, `v4-ajustes-light.png`, `v4-header-1280.png`,
+`v4-movil.png`, `v4-home-dark.png`.
+
+Medido en 1280 px y 390 px: sin solapes, todos los controles en la misma
+vertical, y `tsc` + `eslint` + `next build` limpios.

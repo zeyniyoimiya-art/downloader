@@ -66,8 +66,13 @@ export function Ambient() {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let x = -100, y = -100, lx = -100, ly = -100, raf = 0;
     let tiltEl: HTMLElement | null = null, rx = 0, ry = 0, trx = 0, try_ = 0;
+    let lensTimer: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
       x = e.clientX; y = e.clientY;
+      // La lente solo se muestra mientras hay movimiento (ver .lens en globals.css)
+      lens.current?.classList.add("active");
+      clearTimeout(lensTimer);
+      lensTimer = setTimeout(() => lens.current?.classList.remove("active"), 1400);
       const t = e.target as HTMLElement;
       const g = t.closest?.(".glass") as HTMLElement | null;
       if (g) { const b = g.getBoundingClientRect(); g.style.setProperty("--mx", `${x - b.left}px`); g.style.setProperty("--my", `${y - b.top}px`); }
@@ -95,7 +100,7 @@ export function Ambient() {
       if (tiltEl) { tiltEl.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg)`; if (Math.abs(rx) + Math.abs(ry) < 0.01 && trx === 0) { tiltEl.style.transform = ""; tiltEl = null; } }
     };
     addEventListener("pointermove", onMove); raf = requestAnimationFrame(loop);
-    return () => { removeEventListener("pointermove", onMove); cancelAnimationFrame(raf); };
+    return () => { removeEventListener("pointermove", onMove); clearTimeout(lensTimer); cancelAnimationFrame(raf); };
   }, []);
 
   // Confeti de partículas de vidrio al completar una descarga
