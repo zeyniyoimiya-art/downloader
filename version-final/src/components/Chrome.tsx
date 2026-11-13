@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, CheckCircle2, Clock, Cookie, Download, Info, Moon, Pause, Play, Settings, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Cookie, Download, Info, Moon, Pause, Play, Scissors, Settings, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { useApp } from "./AppProvider";
 import { Logo, Ring, Segmented } from "./ui";
 import { fmtBytes } from "@/lib/shared/progress";
@@ -11,6 +11,7 @@ import { fmtBytes } from "@/lib/shared/progress";
 const TABS = [
   { href: "/", label: "Descargador", icon: Download },
   { href: "/recientes", label: "Recientes", icon: Clock },
+  { href: "/taller", label: "Taller", icon: Scissors },
   { href: "/estadisticas", label: "Datos", icon: BarChart3 },
   { href: "/cookies", label: "Cookies", icon: Cookie },
   { href: "/ajustes", label: "Ajustes", icon: Settings },
@@ -22,9 +23,9 @@ export function Chrome() {
   const { theme, toggleTheme, muted, toggleMute } = useApp();
   const current = TABS.find((t) => t.href === path)?.href ?? "";
 
-  // Atajos de teclado: Alt+1..4 navega entre pestañas
+  // Atajos de teclado: Alt+1..6 navega entre pestañas
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if (e.altKey && /^[1-4]$/.test(e.key)) router.push(TABS[+e.key - 1].href); };
+    const on = (e: KeyboardEvent) => { if (e.altKey && /^[1-6]$/.test(e.key)) router.push(TABS[+e.key - 1].href); };
     addEventListener("keydown", on); return () => removeEventListener("keydown", on);
   }, [router]);
 
@@ -70,7 +71,50 @@ export function Chrome() {
         </div>
       </nav>
       <Island />
+      <ApagadoBanner />
     </>
+  );
+}
+
+/**
+ * Aviso de «el equipo se apagará en N s» con botón para cancelar.
+ *
+ * Va en su propio componente y sondea `/api/power` cada 5 s en vez de meterse
+ * en el SSE: así el estado del apagado no depende de que la conexión de eventos
+ * esté viva (justo cuando más falta hace es al final de la cola).
+ */
+function ApagadoBanner() {
+  const [en, setEn] = useState<number | null>(null);
+  const [queda, setQueda] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    const mirar = () => fetch("/api/power").then((r) => r.json()).then((d: { en: number | null }) => { if (vivo) setEn(d.en); }).catch(() => {});
+    mirar();
+    const t = setInterval(mirar, 5000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []);
+  useEffect(() => {
+    if (!en) return;
+    const tick = () => setQueda(Math.max(0, Math.round((en - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [en]);
+  if (!en) return null;
+  const cancelar = async () => {
+    await fetch("/api/power", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ action: "cancelar" }) });
+    setEn(null);
+  };
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-20 z-[60] flex justify-center px-4">
+      <div className="banner-in pointer-events-auto flex items-center gap-3 px-4 py-2.5 sq-pill" style={{ background: "rgba(6,6,7,.96)", border: "1px solid var(--red-line)", boxShadow: "0 20px 50px -20px rgba(0,0,0,.9), 0 0 30px -14px var(--red)" }}>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--red)", boxShadow: "0 0 10px var(--red)" }} />
+        <span className="text-xs text-white/85">
+          La cola terminó · el equipo se apaga en <span className="num font-semibold text-white">{queda}</span> s
+        </span>
+        <button onClick={cancelar} className="btn sq-pill px-3 py-1 text-[11px] font-semibold" style={{ background: "var(--red)", color: "#fff" }}>Cancelar apagado</button>
+      </div>
+    </div>
   );
 }
 

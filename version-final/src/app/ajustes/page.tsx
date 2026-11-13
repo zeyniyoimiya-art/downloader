@@ -1,10 +1,11 @@
 "use client";
 // "/ajustes": carpeta, formatos, concurrencia, turbo aria2c, rutas de motores + panel Motor vivo, tema, sonido, atajos, reset, Acerca de.
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Logo, Panel, Segmented, Toggle } from "@/components/ui";
 import { sfx } from "@/lib/client/sound";
+import { leerPermiso, pedirPermiso, refrescarPermiso, suscribirPermiso, type PermisoAvisos } from "@/lib/client/notify";
 import type { ConfigView } from "@/lib/client/types";
 import { AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platforms";
 import { VIDEO_CODECS } from "@/lib/shared/codecs";
@@ -32,6 +33,12 @@ function Row({ label, hint, children, stack }: { label: string; hint?: string; c
   );
 }
 
+const DESCRIBIR_SPONSOR: Record<ConfigView["sponsorblock"], string> = {
+  off: "deja el vídeo tal cual",
+  marcar: "los marca como capítulos, no corta nada",
+  quitar: "quita patrocinio, autopromoción, intro y outro",
+};
+
 const NAMING: Record<ConfigView["naming"], string> = {
   ordenado: "una carpeta por canal, título + [id] (recomendado)",
   fecha: "carpeta por canal y fecha delante: ordena cronológicamente",
@@ -45,14 +52,38 @@ const FIDELIDAD: Record<ConfigView["fidelity"], string> = {
   libre: "convierte sin preguntar (puede inflar el peso)",
 };
 
+const ESTADO_PERMISO: Record<PermisoAvisos, string> = {
+  granted: "permiso concedido: verás el aviso del sistema",
+  default: "el navegador aún no ha dado permiso (pulsa Permitir)",
+  denied: "bloqueado: tendrás que permitirlo en el candado de la barra de direcciones",
+  "no-soportado": "este navegador no soporta avisos del sistema",
+};
+
 export default function Ajustes() {
   const { engines, rescan, toast, theme, toggleTheme, muted, toggleMute } = useApp();
   const [cfg, setCfg] = useState<ConfigView | null>(null);
+  const [arranque, setArranque] = useState<{ soportado: boolean; activo: boolean; ruta?: string | null }>({ soportado: false, activo: false });
+  // Permiso de avisos: store externo (Notification.permission) leído de forma
+  // segura para la hidratación.
+  const permiso = useSyncExternalStore(suscribirPermiso, leerPermiso, () => "default" as PermisoAvisos);
   const [scanning, setScanning] = useState(false);
   const [updating, setUpdating] = useState(false);
   useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg); }, []);
+  useEffect(() => { fetch("/api/autoarranque").then((r) => r.json()).then(setArranque).catch(() => {}); }, []);
   if (!cfg) return <div className="glass skeleton h-96 sq" />;
   const set = <K extends keyof ConfigView>(k: K, v: ConfigView[K]) => setCfg({ ...cfg, [k]: v });
+
+  const pedirAvisos = async () => {
+    const p = await pedirPermiso();
+    refrescarPermiso(); // el store vuelve a leer Notification.permission
+    if (p === "granted") setCfg((c) => (c ? { ...c, notify: true } : c));
+  };
+  const cambiarArranque = async (v: boolean) => {
+    const r = await fetch("/api/autoarranque", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ activo: v }) });
+    const d = await r.json();
+    setArranque(d);
+    toast({ kind: d.error ? "err" : "ok", title: d.error ? "No se pudo cambiar" : v ? "Linyue arrancará con Windows" : "Arranque automático desactivado", body: d.error });
+  };
 
   const save = async () => {
     sfx.pop();
@@ -129,6 +160,35 @@ export default function Ajustes() {
         </Panel>
 
         <Panel className="p-5">
+          <h2 className="mb-1 tick font-semibold tracking-tight">Recortes y limpieza</h2>
+          <p className="muted mb-2 text-xs">
+            Bajar 40 minutos para quedarte con 90 segundos es tirar disco y tiempo. Esto se aplica a todas las descargas nuevas;
+            en la pantalla principal puedes cambiarlo para una descarga concreta.
+          </p>
+          <Row label="SponsorBlock" hint={DESCRIBIR_SPONSOR[cfg.sponsorblock]}>
+            <select className={`${input} w-full`} value={cfg.sponsorblock} onChange={(e) => set("sponsorblock", e.target.value as ConfigView["sponsorblock"])} aria-label="SponsorBlock">
+              <option value="off">Apagado · vídeo tal cual</option>
+              <option value="marcar">Marcar · como capítulos</option>
+              <option value="quitar">Quitar · patrocinio, intro, outro</option>
+            </select>
+          </Row>
+          <Row label="Recortar por tiempo" hint="1:00-2:30 · varias: 0:10-0:20, 1:00-1:30 · vacío = todo">
+            <input className={`${input} w-full`} placeholder="1:00-2:30" value={cfg.sections} onChange={(e) => set("sections", e.target.value)} aria-label="Recortar por tiempo" />
+          </Row>
+          <Row label="Revisar suscripciones" hint={cfg.subsEnabled ? `cada ${cfg.subsEveryHours} h se mira si hay algo nuevo` : "apagado: no se consulta ningún canal"}>
+            <div className="flex items-center gap-2">
+              <select className={`${input} w-[92px]`} value={cfg.subsEveryHours} onChange={(e) => set("subsEveryHours", Number(e.target.value))} aria-label="Cada cuántas horas revisar">
+                {[3, 6, 12, 24].map((h) => <option key={h} value={h}>cada {h} h</option>)}
+              </select>
+              <Toggle label="Revisar suscripciones" checked={cfg.subsEnabled} onChange={(v) => set("subsEnabled", v)} />
+            </div>
+          </Row>
+          <Row label="Un archivo por capítulo" hint={cfg.splitChapters ? "activo: los pódcast se parten con su nombre" : "un solo archivo con todos los capítulos"}>
+            <Toggle label="Partir por capítulos" checked={cfg.splitChapters} onChange={(v) => set("splitChapters", v)} />
+          </Row>
+        </Panel>
+
+        <Panel className="p-5">
           <h2 className="mb-1 tick font-semibold tracking-tight">Programador</h2>
           <p className="muted mb-2 text-xs">
             La cola no arranca nada nuevo fuera de la ventana; lo que ya está bajando NO se corta (matar una descarga al 90 % sería peor).
@@ -191,6 +251,25 @@ export default function Ajustes() {
           </Panel>
 
           <Panel className="p-5">
+          <h2 className="mb-1 tick font-semibold tracking-tight">Sistema</h2>
+          <p className="muted mb-2 text-xs">Cosas que pasan cuando la cola se queda vacía.</p>
+          <Row label="Avisar al terminar" hint={ESTADO_PERMISO[permiso]}>
+            <div className="flex items-center gap-2">
+              {permiso !== "granted" && (
+                <button onClick={pedirAvisos} disabled={permiso === "no-soportado"} className="btn btn-glass sq-pill px-3 py-1.5 text-xs">Permitir</button>
+              )}
+              <Toggle label="Avisar al terminar" checked={cfg.notify} onChange={(v) => set("notify", v)} />
+            </div>
+          </Row>
+          <Row label="Apagar el equipo al terminar" hint={cfg.apagarAlTerminar ? "con 60 s de margen y botón para cancelar" : "apagado"}>
+            <Toggle label="Apagar al terminar" checked={cfg.apagarAlTerminar} onChange={(v) => set("apagarAlTerminar", v)} />
+          </Row>
+          <Row label="Arrancar con Windows" hint={arranque.soportado ? (arranque.activo ? `activo · ${arranque.ruta ?? ""}` : "crea un acceso en tu carpeta Inicio (sin admin)") : "solo Windows"}>
+            <Toggle label="Arrancar con Windows" checked={!!arranque.activo} onChange={cambiarArranque} />
+          </Row>
+        </Panel>
+
+        <Panel className="p-5">
           <h2 className="mb-1 tick font-semibold tracking-tight">Red, cookies y límites</h2>
           <Row label="Cookies del navegador" hint="yt-dlp las lee del perfil, nunca se copian aquí"><select className={`${input} w-[148px]`} value={cfg.cookiesFromBrowser} onChange={(e) => set("cookiesFromBrowser", e.target.value)}>
             <option value="">desactivado</option>

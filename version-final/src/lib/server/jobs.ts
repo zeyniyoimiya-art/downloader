@@ -14,6 +14,7 @@ import { baidupcsTransferArgs, parseBaidu, parseTransferredPath } from "../share
 import { guardarCola, leerCola, reanudar, type JobPersistido } from "./queue-store";
 import { enVentanaSilenciosa, msHastaApertura, puedeArrancar } from "../shared/schedule";
 import { descargarLanzou, esLanzou, nombreSeguro, resolverLanzou } from "./lanzou";
+import { programarApagado } from "./power";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -64,6 +65,12 @@ export interface Job {
   codec?: VideoCodec;
   /** Hora a partir de la cual puede arrancar (programado). */
   startAt?: number;
+  /** Recortes por trabajo (fase 9): si están puestos mandan sobre Ajustes. */
+  sponsorblock?: "off" | "marcar" | "quitar";
+  sections?: string;
+  splitChapters?: boolean;
+  /** De dónde salió el trabajo: a mano, de una suscripción o del taller. */
+  from?: "manual" | "sub" | "taller";
   /** 提取码 de un recurso compartido de Baidu (no es una credencial de cuenta). */
   baiduPwd?: string;
   /** Ruta en tu nube de Baidu desde la que se descarga (la deja la transferencia). */
@@ -185,7 +192,17 @@ export function formatForPart(part: AtomicMode, chosen: string, cfg: Config): st
   return cfg.videoFormat;
 }
 
-export function enqueue(urls: string[], mode: Mode, format: string, quality: string, codec?: VideoCodec, delayMin = 0): { added: Job[]; rejected: string[] } {
+export interface ExtraJob {
+  sponsorblock?: "off" | "marcar" | "quitar";
+  sections?: string;
+  splitChapters?: boolean;
+  from?: "manual" | "sub" | "taller";
+}
+
+export function enqueue(
+  urls: string[], mode: Mode, format: string, quality: string,
+  codec?: VideoCodec, delayMin = 0, extra: ExtraJob = {},
+): { added: Job[]; rejected: string[] } {
   const cfg = getConfig();
   const added: Job[] = [];
   const rejected: string[] = [];
@@ -213,6 +230,10 @@ export function enqueue(urls: string[], mode: Mode, format: string, quality: str
         id: newId(), url: binfo?.url ?? d.url, platform: d.platform, label: d.label,
         mode: part, format: formatForPart(part, format, cfg), quality, codec, engine,
         startAt: delayMin > 0 ? Date.now() + delayMin * 60_000 : undefined,
+        sponsorblock: extra.sponsorblock,
+        sections: extra.sections,
+        splitChapters: extra.splitChapters,
+        from: extra.from ?? "manual",
         baiduPwd: binfo?.pwd,
         state: "queued", percent: 0, speed: 0, eta: "", title: binfo?.url ?? d.url, thumbnail: "", files: [], log: [], createdAt: Date.now(),
       };
@@ -246,6 +267,11 @@ function limiteEfectivo(cfg: Config): number {
   return Math.max(1, Math.min(cfg.concurrency, cfg.maxConcurrency));
 }
 
+/** Se pone a true en cuanto termina un trabajo: solo entonces tiene sentido
+ *  apagar el equipo al vaciarse la cola (arrancar la app en vacío no apaga nada). */
+let algoTermino = false;
+export const marcarTerminado = () => { algoTermino = true; };
+
 function pump() {
   const cfg = getConfig();
   limiter.setPerMinute(cfg.ratePerMinute);
@@ -265,6 +291,18 @@ function pump() {
     pumpTimer = setTimeout(() => { pumpTimer = null; pump(); }, Math.max(1000, falta) + 500);
     return;
   }
+  // ── Apagado al terminar ────────────────────────────────────────────────────
+  // Solo si el usuario lo pidió, ya terminó algo y no queda NADA en marcha.
+  if (cfg.apagarAlTerminar && algoTermino && active() === 0 && !mgr.jobs.some((j) => j.state === "queued")) {
+    algoTermino = false;
+    const r = programarApagado(60);
+    const nota = r.ok
+      ? "[sistema] equipo se apagará en 60 s — cancela desde la barra de arriba"
+      : `[sistema] no se pudo programar el apagado: ${r.error}`;
+    const ultimo = mgr.jobs.filter((j) => j.state === "done").at(-1);
+    if (ultimo) { ultimo.log.push(nota); emit(); }
+  }
+
   const tope = limiteEfectivo(cfg);
   let esperaPorRitmo = Infinity;
   while (active() < tope) {
@@ -582,6 +620,10 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         playlistRange: cfg.playlistRange || null,
         baiduRemote: job.baiduRemote,
         baiduPwd: job.baiduPwd,
+        // Recortes (fase 9): vienen de Ajustes o del propio trabajo.
+        sponsorblock: job.sponsorblock ?? cfg.sponsorblock,
+        sections: job.sections ?? cfg.sections,
+        splitChapters: job.splitChapters ?? cfg.splitChapters,
       });
       if (args) {
         job.state = "running"; emit();
@@ -767,6 +809,7 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
       job.log.push(`[aviso] ${job.warning}`);
     }
     job.state = "done"; job.speed = 0; job.eta = "";
+    marcarTerminado(); // con esto el apagado automático ya puede dispararse
     event("done", { id: job.id, title: job.title });
   } catch (e) {
     job.error = e instanceof Error ? e.message : String(e);

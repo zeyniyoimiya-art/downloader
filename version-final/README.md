@@ -21,7 +21,7 @@ LINYUE_DATA=/ruta/alternativa       # carpeta de datos (por defecto ~/.linyue)
 | `npm run dev` | servidor de desarrollo |
 | `npm run build` | compila para producción |
 | `npm run lint` | eslint |
-| `npm test` | vitest (234 tests) |
+| `npm test` | vitest (312 tests) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## Dónde vive cada cosa
@@ -32,6 +32,9 @@ src/lib/shared/     lógica pura y testeable (sin fs, sin red)
   args.ts             construcción de argumentos de cada motor (plantillas, proxy, rangos)
   codecs.ts           qué códec cabe en qué contenedor de verdad
   schedule.ts         ventana silenciosa y horas (cruza medianoche)
+  recortes.ts         SponsorBlock, «1:00-2:30» → --download-sections, plantilla de capítulos
+  subs.ts             suscripciones: qué IDs son nuevos, poda, reconstrucción de URL
+  taller.ts           argumentos de ffmpeg para convertir/recortar/comprimir archivos locales
   stats.ts            cálculo de estadísticas desde el historial
 src/lib/server/     lo que toca el sistema
   jobs.ts             la cola: pump(), blindaje, ventana, Lanzou/Aliyun, post-proceso
@@ -41,10 +44,65 @@ src/lib/server/     lo que toca el sistema
   lanzou.ts           extractor nativo de 蓝奏云 (página → iframe → sign → ajaxm.php)
   guard.ts            CSRF y cabeceras para toda la API
   ratelimit.ts        freno adaptativo por host
+  subs.ts             subs.json + revisión real (--flat-playlist) y encolado de lo nuevo
+  taller.ts           cola del conversor local (ffmpeg, progreso por -progress pipe:1)
+  power.ts            apagar el equipo al terminar, con cuenta atrás y cancelación
 src/app/            rutas y API (App Router)
 src/components/     Chrome (header, isla, tab bar), ui.tsx (piezas), Ambient (fondo)
-tests/              core, fase4, fase5, fase6/baidu, fase7, fase8, ffmpeg-real
+tests/              core, fase4, fase5, fase6/baidu, fase7, fase8, fase9, taller, ffmpeg-real
 ```
+
+## Cuatro cosas nuevas (fase 9)
+
+### 1 · Suscripciones
+En la portada, panel **Suscripciones**: pega la URL de un canal, una playlist o un
+perfil y Linyue lo mira cada 3/6/12/24 h. Lo nuevo entra en la cola como cualquier
+descarga (con sus reintentos, su ventana silenciosa y su archivo de descargados).
+
+- Se pregunta con `--flat-playlist`, que trae **la lista, no los vídeos**: un canal
+  de 5000 elementos se consulta en segundos.
+- Cada revisión encola **como mucho 5** elementos nuevos: si algo va mal, no se
+  llena el disco de golpe.
+- Se guardan los IDs ya vistos (los últimos 3000). 5 fallos seguidos y esa
+  suscripción deja de reintentar sola hasta que pulses «Revisar ahora».
+
+### 2 · Recortes y SponsorBlock
+Fila **Recortar** en la portada (solo para esa descarga) y panel en Ajustes
+(para todas):
+
+| Ajuste | Qué hace |
+|---|---|
+| Recortar `1:00-2:30` | `--download-sections`; varias con comas: `0:10-0:20, 1:00-1:30` |
+| SponsorBlock **marcar** | `--sponsorblock-mark sponsor,selfpromo,interaction,intro,outro` |
+| SponsorBlock **quitar** | lo mismo con `--sponsorblock-remove` (corta el patrocinio) |
+| Un archivo por capítulo | `--split-chapters` + plantilla `%(section_number)02d — %(section_title)` |
+
+Un recorte mal escrito **no se le pasa al motor**: se valida y se ignora, porque el
+mensaje de error de yt-dlp ante un `--download-sections` inválido no explica nada.
+
+### 3 · Taller (conversor local)
+Pestaña **Taller** (Alt+3). Arrastra un archivo del disco: se convierte, se recorta
+o se comprime con ffmpeg, con cola y progreso real.
+
+- Sale un archivo nuevo con « (taller)» en el nombre: **el original no se toca**.
+- La subida va por streaming al disco (nunca se carga el archivo en memoria): un
+  MKV de 8 GB no tumba el proceso.
+- Compresión con CRF 18–32; «sin recodificar» solo cambia el contenedor o recorta.
+- Se usa la misma tabla de códecs que las descargas: si dice AC-3, es AC-3.
+
+### 4 · Sistema: avisos, apagado y arranque
+En **Ajustes → Sistema**:
+
+- **Avisar al terminar**: notificación nativa del sistema (permiso pedido con un
+  clic, nunca al cargar la página).
+- **Apagar el equipo al terminar**: 60 s de cuenta atrás con banner y botón para
+  cancelar. Solo se activa si hubo al menos una descarga terminada: arrancar la app
+  con la cola vacía **no** apaga nada.
+- **Arrancar con Windows**: crea un `.cmd` en tu carpeta Inicio. Sin admin, sin
+  servicios, sin tareas programadas: se borra a mano cuando quieras.
+
+`.github/workflows/ci.yml` ejecuta tipos, lint, los 312 tests (con ffmpeg de verdad)
+y el build en cada push a `main`.
 
 ## Estructura de las descargas
 

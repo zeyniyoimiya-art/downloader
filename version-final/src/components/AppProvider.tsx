@@ -2,6 +2,7 @@
 // Estado global de la app: cola por SSE, motores, toasts que nacen de la isla, tema y sonido.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { setMuted, sfx } from "@/lib/client/sound";
+import { avisar } from "@/lib/client/notify";
 import type { EngineView, JobView } from "@/lib/client/types";
 
 export interface Toast { id: number; kind: "ok" | "err" | "info"; title: string; body?: string }
@@ -45,6 +46,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const theme = useSyncExternalStore(subscribePref, themeSnap, () => "dark" as const);
   const muted = useSyncExternalStore(subscribePref, mutedSnap, () => false);
   const [confetti, setConfetti] = useState(0);
+  // Avisos del sistema: el permiso se pide en Ajustes (dentro de un clic), aquí
+  // solo se consulta si están activados en config.json.
+  const notificar = useRef(false);
+  useEffect(() => {
+    const leer = () => fetch("/api/config").then((r) => r.json()).then((c) => { notificar.current = !!c.notify; }).catch(() => {});
+    leer();
+    // Se refresca al volver a la pestaña: si activas los avisos en Ajustes y
+    // vuelves, no hace falta recargar.
+    const onVis = () => { if (!document.hidden) leer(); };
+    addEventListener("visibilitychange", onVis);
+    return () => removeEventListener("visibilitychange", onVis);
+  }, []);
   const tid = useRef(0);
 
   const toast = useCallback((t: Omit<Toast, "id">) => {
@@ -86,8 +99,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetch("/api/engines").then((r) => r.json()).then(setEngines).catch(() => {});
     const es = new EventSource("/api/events");
     es.addEventListener("jobs", (e) => setJobs(JSON.parse((e as MessageEvent).data)));
-    es.addEventListener("done", (e) => { const d = JSON.parse((e as MessageEvent).data); toast({ kind: "ok", title: "Descarga lista", body: d.title }); setConfetti((c) => c + 1); });
-    es.addEventListener("error", (e) => { const m = (e as MessageEvent).data; if (m) { const d = JSON.parse(m); toast({ kind: "err", title: "Falló la descarga", body: d.error }); } });
+    es.addEventListener("done", (e) => { const d = JSON.parse((e as MessageEvent).data); toast({ kind: "ok", title: "Descarga lista", body: d.title }); setConfetti((c) => c + 1); if (notificar.current) avisar("Descarga lista", d.title); });
+    es.addEventListener("error", (e) => { const m = (e as MessageEvent).data; if (m) { const d = JSON.parse(m); toast({ kind: "err", title: "Falló la descarga", body: d.error }); if (notificar.current) avisar("Falló una descarga", d.error); } });
     return () => es.close();
   }, [toast]);
 

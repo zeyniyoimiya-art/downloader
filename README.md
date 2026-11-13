@@ -5,7 +5,7 @@
 **Descargador universal local.** Audio, vídeo, fotos y perfiles enteros, con ficha completa.
 Todo se procesa en tu PC: **cero nube, cero telemetría, cero subidas**.
 
-<sub>17 motores · 234 tests · Next.js 16 · Windows primero, Linux también</sub>
+<sub>17 motores · 312 tests · Next.js 16 · Windows primero, Linux también</sub>
 
 </div>
 
@@ -25,6 +25,10 @@ Todo se procesa en tu PC: **cero nube, cero telemetría, cero subidas**.
 | **Cola** | Persistente: si cierras la app, se reanuda donde iba |
 | **Programador** | «Solo de noche» 01:00–07:00 y retraso por trabajo (15 min / 1 h / 3 h) |
 | **Datos** | GB, tiempo, plataformas, racha, récord y reparto por canal — todo desde `history.json` |
+| **Suscripciones** | Guarda un canal o una lista y lo revisa cada 3/6/12/24 h: lo nuevo entra solo en la cola |
+| **Recortes** | SponsorBlock (marcar o quitar), recorte por tiempo (`1:00-2:30`) y un archivo por capítulo |
+| **Taller** | Arrastra un archivo del disco y conviértelo, recórtalo o comprímelo — el original no se toca |
+| **Sistema** | Aviso nativo al terminar, «apagar el equipo al acabar la cola» y arranque con Windows |
 
 ## Cómo arrancarlo (Windows)
 

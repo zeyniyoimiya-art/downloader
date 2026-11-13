@@ -1,6 +1,7 @@
 // Construcción de argumentos por motor/modo/formato. Siempre devuelve arrays (nunca strings para shell).
 import { AUDIO_FORMATS, VIDEO_FORMATS, type Detected, type EngineId, type Mode } from "./platforms";
 import { audioTarget, resolveContainer, videoSelector, type VideoCodec } from "./codecs";
+import { argSponsor, parseSecciones, TPL_CAPITULOS, type SponsorBlock } from "./recortes";
 // Se reexportan para que jobs.ts tenga un único punto de entrada.
 export { audioTarget, ffmpegAudioArgs, ffmpegVideoArgs, videoSelector, resolveContainer } from "./codecs";
 export type { VideoCodec } from "./codecs";
@@ -69,6 +70,12 @@ export interface ArgOptions {
   impersonate?: string | null;
   /** Calidad de audio para códecs con pérdida: 0 (mejor) … 9, o "320K". */
   audioQuality?: string | null;
+  /** SponsorBlock: off | marcar | quitar. */
+  sponsorblock?: SponsorBlock | null;
+  /** Recorte por tiempo: "1:00-2:30" (txt libre, se valida aquí). */
+  sections?: string | null;
+  /** Un archivo por capítulo (podcasts, directos largos). */
+  splitChapters?: boolean;
 }
 
 // Sanitiza un argumento: sin saltos de línea ni NUL; y nunca permite que un link se interprete como opción
@@ -118,9 +125,14 @@ const PLANTILLAS: Record<string, { video: string; audio: string }> = {
 };
 
 /** Plantilla de salida para el motor. `naming` viene de Ajustes. */
-export function plantillaSalida(naming = "ordenado", audio = false): string {
+export function plantillaSalida(naming = "ordenado", audio = false, capitulos = false): string {
   const p = PLANTILLAS[naming] ?? PLANTILLAS.ordenado;
-  return audio ? p.audio : p.video;
+  const tpl = audio ? p.audio : p.video;
+  if (!capitulos) return tpl;
+  // Al partir por capítulos el nombre debe llevar el número y el título de la
+  // sección, o todos los trozos acaban llamándose igual.
+  const carpeta = tpl.includes("/") ? tpl.slice(0, tpl.lastIndexOf("/") + 1) : "";
+  return carpeta + TPL_CAPITULOS;
 }
 
 // Bilibili WAF rechaza el UA por defecto de yt-dlp ("No video formats
@@ -162,7 +174,7 @@ case "yt-dlp": {
       // y el modo foto usa jpg/webp. Quien decide si esto es audio es el FORMATO.
       const esAudio = (AUDIO_FORMATS as readonly string[]).includes(o.format);
       const esVideo = (VIDEO_FORMATS as readonly string[]).includes(o.format);
-      const a = ["--newline", "--progress", "--no-colors", "--ignore-errors", "-P", out, "-o", plantillaSalida(o.naming, esAudio),
+      const a = ["--newline", "--progress", "--no-colors", "--ignore-errors", "-P", out, "-o", plantillaSalida(o.naming, esAudio, !!o.splitChapters),
         "--print", "after_move:LYF|%(filepath)s"];
       // Los archivos parciales e INTERMEDIOS van a una carpeta aparte.
       // Sin esto: al extraer audio (-x) yt-dlp descarga el archivo original
@@ -259,6 +271,17 @@ case "yt-dlp": {
           if (["mp4", "mkv", "mov", "m4v", "ts", "flv"].includes(cont)) a.push("--remux-video", cont);
         }
       }
+      // ── Recortes y limpieza ────────────────────────────────────────────
+      // SponsorBlock: se apoya en la base de datos pública para marcar o quitar
+      // patrocinios. Sin argumento válido no se añade nada (no rompe nada).
+      a.push(...argSponsor(o.sponsorblock));
+      // Recorte: solo si el texto se entiende. Si no, mejor un trabajo normal
+      // que un fallo de yt-dlp con "Invalid start time".
+      if (o.sections) {
+        const trozos = parseSecciones(o.sections);
+        if (trozos.length) a.push("--download-sections", trozos.map((t) => t.argumento).join(","));
+      }
+      if (o.splitChapters) a.push("--split-chapters");
       a.push("--", url); // "--" corta el parseo de opciones
       return a;
     }

@@ -22,4 +22,6 @@ export interface ConfigView {
   chapters: boolean; embedThumbnail: boolean; keepOriginal: boolean; reencodeVideo: boolean; baiduDir: string;
   proxy: string; playlistRange: string; naming: "ordenado" | "compacto" | "plano" | "fecha"; abortOnDiskFull: boolean;
   quietEnabled: boolean; quietFrom: string; quietTo: string;
+  sponsorblock: "off" | "marcar" | "quitar"; sections: string; splitChapters: boolean;
+  notify: boolean; apagarAlTerminar: boolean; subsEnabled: boolean; subsEveryHours: number;
 }

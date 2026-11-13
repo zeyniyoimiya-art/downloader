@@ -3,8 +3,8 @@
    Las carátulas vienen de decenas de dominios (YouTube, TikTok, X, Bilibili…). Con <Image> habría que abrir `remotePatterns` a '**', que es exactamente lo que la regla evita. Se compensa con loading=lazy, decoding=async y un contenedor aspect-video (sin CLS).
 */
 // "/" Descargador: hero, textarea multi-link con chips por línea, modos, formatos (FLIP), vista previa y cola viva.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Download, Eye, FolderOpen, Music2, Film, Images, UserSquare2, GripVertical, RotateCcw, X, Pause, Play, Trash2, Sparkles, Loader2, Clock, Moon } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Download, Eye, FolderOpen, Music2, Film, Images, UserSquare2, GripVertical, RotateCcw, X, Pause, Play, Trash2, Sparkles, Loader2, Clock, Moon, Scissors, Radio, Plus } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Odometer, Panel, Ring } from "@/components/ui";
 import { parseLinks, routeEngine, primaryMode, availableModes, recommendMode, AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platforms";
@@ -12,6 +12,7 @@ import type { VideoCodec } from "@/lib/shared/codecs";
 import { fmtBytes, fmtDuration, fmtViews } from "@/lib/shared/progress";
 import { sfx } from "@/lib/client/sound";
 import type { ConfigView, Mode } from "@/lib/client/types";
+import { describirRevision, type Sub } from "@/lib/shared/subs";
 
 const MODES: { id: Mode; title: string; desc: string; icon: typeof Music2; grad: string }[] = [
   { id: "all", title: "Todo", desc: "Fotos + Video + Audio", icon: Sparkles, grad: "grad-red" },
@@ -31,6 +32,12 @@ const FORMATS: Record<Mode, readonly string[]> = {
 // Programador (fase 8): retrasar el arranque sin cerrar la app. 0 = ahora.
 // No es un cron: el trabajo queda en la cola persistente y arranca solo cuando
 // llega su hora, aunque cierres y vuelvas a abrir la app.
+// SponsorBlock (fase 9): marcar o quitar patrocinios sin abrir el vídeo.
+const SPONSOR: { id: "off" | "marcar" | "quitar"; label: string; title: string }[] = [
+  { id: "off", label: "No", title: "deja el vídeo tal cual" },
+  { id: "marcar", label: "Marcar", title: "los marca como capítulos, no corta nada" },
+  { id: "quitar", label: "Quitar", title: "quita patrocinio, autopromoción, intro y outro" },
+];
 const DELAYS: { min: number; label: string }[] = [
   { min: 0, label: "Ahora" },
   { min: 15, label: "15 min" },
@@ -58,6 +65,8 @@ export default function Home() {
   const [quality, setQuality] = useState("1080");
   const [codec, setCodec] = useState<VideoCodec>("auto");
   const [delay, setDelay] = useState(0); // minutos de retraso elegidos en la home
+  const [sponsor, setSponsor] = useState<"off" | "marcar" | "quitar" | null>(null); // null = lo que diga Ajustes
+  const [recorte, setRecorte] = useState(""); // "1:00-2:30" · vacío = el vídeo entero
   const [cfg, setCfg] = useState<ConfigView | null>(null);
   const [status, setStatus] = useState<{ files: number; outputDir: string; freeBytes?: number | null; freeLabel?: string | null }>({ files: 0, outputDir: "" });
   const [busy, setBusy] = useState(false);
@@ -92,7 +101,12 @@ export default function Home() {
   const download = async () => {
     if (!links.length) return toast({ kind: "err", title: "Pega al menos un link válido" });
     sfx.pop(); setBusy(true);
-    const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: links.map((l) => l.url), mode, format: effFormat, quality, codec, delayMin: delay }) });
+    const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({
+      urls: links.map((l) => l.url), mode, format: effFormat, quality, codec, delayMin: delay,
+      sponsorblock: sponsor ?? cfg?.sponsorblock, splitChapters: cfg?.splitChapters,
+      // El recorte se valida en el servidor; aquí solo se manda si tiene pinta.
+      sections: recorte.trim() ? recorte.trim() : undefined,
+    }) });
     const d = await r.json(); setBusy(false);
     if (!r.ok) return toast({ kind: "err", title: "No se pudo encolar", body: d.error });
     const skipped = d.added.filter((j: { state: string }) => j.state === "skipped").length;
@@ -103,10 +117,12 @@ export default function Home() {
       delay > 0
         ? `Programado para las ${new Date(Date.now() + delay * 60_000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
         : "",
+      recorte.trim() ? `Recorte ${recorte.trim()}` : "",
+      (sponsor ?? cfg?.sponsorblock) === "quitar" ? "SponsorBlock: quitando patrocinios" : "",
       cfg?.quietEnabled ? `Ventana silenciosa ${cfg.quietFrom}–${cfg.quietTo}: fuera de ella espera` : "",
       "La isla te avisa al terminar",
     ].filter(Boolean).join(" — ") });
-    setText(""); setPreviews(null); setDelay(0);
+    setText(""); setPreviews(null); setDelay(0); setRecorte("");
   };
 
   // Tope de seguridad (por encima de esto ni la UI ni el sitio aguantan).
@@ -219,6 +235,27 @@ export default function Home() {
           </div>
         )}
 
+        {/* Recortes: qué se hace con el vídeo al bajarlo */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="muted flex items-center gap-1 text-xs"><Scissors size={13} strokeWidth={1.5} />Recortar</span>
+          <input
+            value={recorte} onChange={(e) => setRecorte(e.target.value)}
+            placeholder="1:00-2:30" aria-label="Recortar por tiempo"
+            className="mono w-[124px] px-2.5 py-1 text-xs outline-none sq-pill"
+            style={{ background: "var(--fill)", border: "1px solid var(--line)", color: "var(--fg)" }}
+            title="Descarga solo ese trozo (vacío = el vídeo entero). Varios: 0:10-0:20, 1:00-1:30"
+          />
+          <span className="muted mx-1 text-xs">·</span>
+          <span className="muted text-xs">SponsorBlock</span>
+          {SPONSOR.map((sp) => {
+            const activo = (sponsor ?? cfg?.sponsorblock ?? "off") === sp.id;
+            return (
+              <button key={sp.id} onClick={() => { sfx.tick(); setSponsor(sp.id); }} title={sp.title} aria-pressed={activo}
+                className={`btn sq-pill px-3 py-1 text-xs mono ${activo ? "bg-[var(--fill-2)]" : "btn-glass muted"}`}>{sp.label}</button>
+            );
+          })}
+        </div>
+
         {/* Programador: cuándo arranca lo que encolás ahora */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="muted flex items-center gap-1 text-xs"><Clock size={13} strokeWidth={1.5} />Empezar</span>
@@ -283,6 +320,7 @@ export default function Home() {
       )}
 
       <Queue jobs={jobs} jobAction={jobAction} />
+      <Suscripciones formats={{ audio: AUDIO_FORMATS, video: VIDEO_FORMATS, photo: PHOTO_FORMATS }} />
     </div>
   );
 }
@@ -363,6 +401,123 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
           );
         })}
       </ul>
+    </Panel>
+  );
+}
+
+// ── Suscripciones ─────────────────────────────────────────────────────────────
+// Vive aquí abajo y no en Ajustes a propósito: es una acción de todos los días,
+// y un canal guardado tiene que vérselo de un vistazo al abrir la app.
+const INTERVALOS = [3, 6, 12, 24];
+
+function Suscripciones({ formats }: { formats: Record<string, readonly string[]> }) {
+  const { toast } = useApp();
+  const [subs, setSubs] = useState<Sub[]>([]);
+  const [url, setUrl] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/subs").then((r) => r.json()).then((d) => setSubs(d.subs ?? [])).catch(() => {});
+  }, []);
+  // El campo para pegar una URL se ve siempre que la lista esté vacía o que el
+  // usuario lo haya abierto: sin efectos que reaccionen a la lista.
+  const mostrarAlta = abierto || subs.length === 0;
+
+  const enviar = async (cuerpo: Record<string, unknown>, metodo = "POST") => {
+    const r = await fetch("/api/subs", {
+      method: metodo,
+      headers: { "Content-Type": "application/json", "x-linyue": "1" },
+      body: metodo === "DELETE" ? undefined : JSON.stringify(cuerpo),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast({ kind: "err", title: "No se pudo", body: d.error }); return null; }
+    if (d.subs) setSubs(d.subs);
+    return d;
+  };
+
+  const agregar = async () => {
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) { toast({ kind: "err", title: "Pega la URL del canal o de la playlist", body: "Tiene que empezar por https://" }); return; }
+    setCargando(true);
+    const d = await enviar({ action: "add", url: u });
+    setCargando(false);
+    if (d) { setUrl(""); sfx.success(); toast({ kind: "ok", title: "Canal guardado", body: "Se revisará cada pocas horas" }); }
+  };
+
+  const revisar = async (id?: string) => {
+    setCargando(true);
+    const d = await enviar({ action: id ? "check" : "checkAll", id });
+    setCargando(false);
+    const r = d?.resultado?.[0];
+    if (r) toast({ kind: r.ok ? "ok" : "err", title: r.ok ? "Revisado" : "Falló la revisión", body: r.mensaje });
+  };
+
+  return (
+    <Panel className="p-4 sm:p-6">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="tick flex items-center gap-2 text-lg font-semibold tracking-tight"><Radio size={16} strokeWidth={1.5} />Suscripciones</h2>
+        <div className="flex items-center gap-2">
+          {subs.length > 0 && (
+            <button onClick={() => void revisar()} disabled={cargando} className="btn btn-glass sq-pill px-3 py-1.5 text-xs">
+              {cargando ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} strokeWidth={1.5} />}Revisar ahora
+            </button>
+          )}
+          <button onClick={() => setAbierto((v) => !v)} className="btn btn-glass sq-pill px-3 py-1.5 text-xs" aria-expanded={mostrarAlta}>
+            {mostrarAlta ? "Ocultar" : "Añadir"}
+          </button>
+        </div>
+      </div>
+
+      {mostrarAlta && (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={url} onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void agregar(); }}
+            placeholder="https://www.youtube.com/@canal  ·  playlist  ·  perfil"
+            aria-label="URL del canal a seguir"
+            className="mono flex-1 px-3 py-2 text-xs outline-none sq-pill"
+            style={{ background: "var(--fill)", border: "1px solid var(--line)", color: "var(--fg)" }}
+          />
+          <button onClick={() => void agregar()} disabled={cargando || !url.trim()} className="btn btn-primary sq-pill px-4 py-2 text-xs">
+            {cargando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} strokeWidth={1.8} />}Guardar canal
+          </button>
+        </div>
+      )}
+
+      {subs.length === 0 ? (
+        <p className="muted text-xs">
+          Guarda un canal y Linyue mira si hay algo nuevo cada pocas horas. Lo que encuentra entra en la cola como
+          cualquier otra descarga: con sus reintentos, su ventana silenciosa y su archivo de descargados.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {subs.map((s) => (
+            <li key={s.id} className="scrim flex flex-wrap items-center gap-3 border border-[var(--line)] p-3 sq-sm">
+              <Radio size={15} strokeWidth={1.5} className="shrink-0" style={{ color: "var(--red)" }} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{s.label}</div>
+                <div className="mono muted truncate text-[11px]">{describirRevision(s)} · {s.mode}/{s.format} · {s.lastResult ?? "—"}</div>
+              </div>
+              <select
+                value={s.everyHours} aria-label={`Cada cuántas horas revisar ${s.label}`}
+                onChange={(e) => void enviar({ action: "update", id: s.id, everyHours: Number(e.target.value) })}
+                className="mono px-2 py-1 text-[11px] outline-none sq-pill"
+                style={{ background: "var(--fill)", border: "1px solid var(--line)", color: "var(--fg)" }}
+              >
+                {INTERVALOS.map((h) => <option key={h} value={h}>cada {h} h</option>)}
+              </select>
+              <button aria-label="Revisar ahora" onClick={() => void revisar(s.id)} disabled={cargando} className="btn btn-glass h-8 w-8 sq-pill"><RotateCcw size={14} strokeWidth={1.5} /></button>
+              <button aria-label="Quitar suscripción" onClick={() => void enviar({ id: s.id }, "DELETE")} className="btn btn-glass h-8 w-8 sq-pill"><X size={14} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {subs.length > 0 && (
+        <p className="muted mt-3 text-[11px]">
+          Cada revisión encola como mucho 5 elementos nuevos, así un canal con 3000 vídeos no te llena el disco de golpe.
+        </p>
+      )}
     </Panel>
   );
 }

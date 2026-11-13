@@ -1,0 +1,56 @@
+# Integración continua: los 234 tests y el build, en cada push.
+#
+# Por qué existe: el proyecto se toca a mano, en Windows, y un cambio de tipos en
+# `args.ts` puede romper una conversión de audio sin que lo notes hasta el lunes.
+# Esto lo detecta en 3 minutos.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: tipos · lint · tests · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: version-final
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Los motores (.exe de Windows) no existen aquí: la app tiene que compilar
+      # y pasar los tests igual, que es justo lo que se quiere garantizar.
+      LINYUE_MOCK_ENGINES: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ffmpeg/ffprobe de verdad: sin ellos se saltarían los tests que comprueban
+      # que un AC-3 acaba siendo un AC-3 y no solo una etiqueta en un desplegable.
+      - name: Instalar ffmpeg
+        working-directory: .
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Dependencias
+        # `npm install` (no `ci`): el repo no versiona package-lock.json a propósito.
+        run: npm install --no-audit --no-fund
+
+      - name: Tipos
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Tests
+        run: npx vitest run
+
+      - name: Build
+        run: npx next build

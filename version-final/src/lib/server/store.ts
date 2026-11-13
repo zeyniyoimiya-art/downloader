@@ -133,6 +133,22 @@ noRepeat: z.boolean(),
   quietEnabled: z.boolean(),
   quietFrom: horaT,
   quietTo: horaT,
+  // ── Recortes (fase 9) ──
+  /** SponsorBlock: off | marcar | quitar. */
+  sponsorblock: z.enum(["off", "marcar", "quitar"]),
+  /** Recorte por tiempo: "1:00-2:30" (varias separadas por comas). Vacío = todo. */
+  sections: z.string().max(240),
+  /** Un archivo por capítulo. */
+  splitChapters: z.boolean(),
+  // ── Sistema y suscripciones (fase 9) ──
+  /** Aviso del sistema (toast de Windows) al terminar la cola. */
+  notify: z.boolean(),
+  /** Apagar el equipo cuando la cola quede vacía (con 60 s para cancelar). */
+  apagarAlTerminar: z.boolean(),
+  /** Revisar los canales suscritos automáticamente. */
+  subsEnabled: z.boolean(),
+  /** Cada cuántas horas se revisan (1–168). */
+  subsEveryHours: z.number().int().min(1).max(168),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -179,6 +195,15 @@ turbo: true,
   quietEnabled: false,
   quietFrom: "01:00",
   quietTo: "07:00",
+  sponsorblock: "off",
+  sections: "",
+  splitChapters: false,
+  notify: false,
+  apagarAlTerminar: false,
+  // Activo por defecto: si guardas un canal es porque quieres que se revise.
+  // El interruptor de Ajustes existe para apagarlo del todo (viaje, datos…).
+  subsEnabled: true,
+  subsEveryHours: 6,
 });
 
 /** Primera carpeta `vendor` que exista entre las raíces candidatas. */

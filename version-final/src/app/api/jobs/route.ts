@@ -13,6 +13,10 @@ const Body = z.object({
   codec: z.enum(["auto", "h264", "h265", "av1", "vp9", "vp8", "mpeg4", "prores", "theora"]).optional(),
   /** Minutos de espera antes de arrancar (programar la descarga). 0 = ya. */
   delayMin: z.number().int().min(0).max(1440).optional(),
+  // Recortes por trabajo (fase 9)
+  sponsorblock: z.enum(["off", "marcar", "quitar"]).optional(),
+  sections: z.string().max(240).optional(),
+  splitChapters: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -22,8 +26,8 @@ export async function POST(req: Request) {
   { const g = guard(req); if (!g.ok) return blocked(g); }
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
-  const { urls, mode, format, quality, codec, delayMin } = parsed.data;
-  return Response.json(enqueue(urls, mode, format, quality, codec, delayMin ?? 0));
+  const { urls, mode, format, quality, codec, delayMin, sponsorblock, sections, splitChapters } = parsed.data;
+  return Response.json(enqueue(urls, mode, format, quality, codec, delayMin ?? 0, { sponsorblock, sections, splitChapters }));
 }
 export async function DELETE(req: Request) {
   { const g = guard(req); if (!g.ok) return blocked(g); }
