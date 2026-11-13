@@ -22,6 +22,13 @@ calidad, sin descargar basura".
 | 13 | **`streamlink`** | `streamlink.exe` | **directos** Twitch / Kick / Bilibili Live | opcional |
 | 14 | **`youget`** | `you-get.exe` | **segundo motor CN** (bilibili, youku, niconico) | opcional |
 | 15 | **`curl`** | `curl.exe` | **archivos directos** (.mp4, .zip, .pdf, mirrors) | sí (viene con Windows) |
+| 16 | `aliyunpan` | `aliyunpan.exe` | 阿里云盘 con tu cuenta | opcional (no incluido) |
+| 17 | `baidupcs` | `BaiduPCS-Go.exe` | 百度网盘 con tu cuenta | opcional (no incluido) |
+
+> `exiftool.exe` viaja en el ZIP pero **su carpeta `exiftool_files\` no** (está en
+> `.gitignore`): sin ella el binario no arranca y el panel lo dice tal cual. Nada
+> de la app lo usa hoy —los metadatos van por ffprobe—, así que se queda apagado.
+> Si lo quieres, descarga el paquete completo de exiftool.org dentro de `vendor/`.
 
 Reglas del router (`routeEngine`), en orden:
 

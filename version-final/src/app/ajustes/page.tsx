@@ -1,7 +1,7 @@
 "use client";
 // "/ajustes": carpeta, formatos, concurrencia, turbo aria2c, rutas de motores + panel Motor vivo, tema, sonido, atajos, reset, Acerca de.
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud } from "lucide-react";
+import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud, X } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Logo, Panel, Segmented, Toggle } from "@/components/ui";
 import { sfx } from "@/lib/client/sound";
@@ -51,6 +51,16 @@ const FIDELIDAD: Record<ConfigView["fidelity"], string> = {
   avisar: "convierte, pero el archivo se marca como transcode",
   libre: "convierte sin preguntar (puede inflar el peso)",
 };
+
+/** «C:\Users\…\version-final\vendor\ffmpeg.exe» → «…\version-final\vendor\ffmpeg.exe». */
+function rutaCorta(p: string, tramos = 3): string {
+  // El separador se conserva: en Windows se ve «…\vendor\ffmpeg.exe» y en
+  // Linux «…/vendor/ffmpeg».
+  const sep = p.includes("\\") ? "\\" : "/";
+  const partes = p.split(/[\\/]/).filter(Boolean);
+  if (partes.length <= tramos) return p;
+  return "…" + sep + partes.slice(-tramos).join(sep);
+}
 
 const ESTADO_PERMISO: Record<PermisoAvisos, string> = {
   granted: "permiso concedido: verás el aviso del sistema",
@@ -288,7 +298,7 @@ export default function Ajustes() {
           <Panel className="p-5">
             <h2 className="mb-3 tick flex items-center gap-2 font-semibold"><Keyboard size={16} strokeWidth={1.5} />Atajos</h2>
             <ul className="grid grid-cols-2 gap-2 text-xs">
-              {[["Ctrl/⌘ + Enter", "Descargar"], ["Alt + 1…4", "Cambiar pestaña"], ["Click derecho", "Menú de ficha"], ["Arrastrar ⋮⋮", "Reordenar cola"]].map(([k, v]) => <li key={k} className="scrim flex justify-between gap-2 px-3 py-2 sq-sm"><span className="mono">{k}</span><span className="muted">{v}</span></li>)}
+              {[["Ctrl/⌘ + Enter", "Descargar"], ["Alt + 1…6", "Cambiar pestaña"], ["Click derecho", "Menú de ficha"], ["Arrastrar ⋮⋮", "Reordenar cola"]].map(([k, v]) => <li key={k} className="scrim flex justify-between gap-2 px-3 py-2 sq-sm"><span className="mono">{k}</span><span className="muted">{v}</span></li>)}
             </ul>
           </Panel>
         </div>
@@ -306,6 +316,11 @@ export default function Ajustes() {
             <button onClick={doScan} className="btn btn-glass h-9 px-4 text-xs sq-pill"><RefreshCw size={14} className={scanning ? "animate-spin" : "ico"} />Re-escanear</button>
           </div>
         </div>
+        <p className="muted mb-3 text-[11px]">
+          Esto es el inventario de binarios: verde = listo, amarillo = opcional que no está (la app funciona igual),
+          rojo = falta algo obligatorio. Los que no vienen en el ZIP se pueden añadir con su ruta o dejarlos estar.
+          <span className="mono"> {ok}/{engines.length}</span> listos hoy.
+        </p>
         <div className="grid gap-2 md:grid-cols-2">
           {engines.map((e, i) => (
             <div key={e.id} className="scrim rise flex items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
@@ -313,9 +328,28 @@ export default function Ajustes() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2"><span className="mono text-sm">{e.exe}</span>{e.optional && <span className="muted text-[11px]">opcional</span>}</div>
                 <div className="muted truncate text-[11px]">{e.role}</div>
-                <input className="mono mt-1 w-full bg-transparent text-[11px] opacity-60 outline-none focus:opacity-100" placeholder={e.path ?? "ruta personalizada…"} value={cfg.enginePaths[e.id] ?? ""} onChange={(ev) => set("enginePaths", { ...cfg.enginePaths, [e.id]: ev.target.value })} aria-label={`Ruta de ${e.exe}`} />
+                <div className="flex items-center gap-1">
+                  <input
+                    className="mono mt-1 w-full min-w-0 bg-transparent text-[11px] opacity-60 outline-none focus:opacity-100"
+                    placeholder={e.path ? rutaCorta(e.path) : "ruta personalizada…"}
+                    title={e.path ?? "Escribe aquí la ruta completa si el motor está en otro sitio"}
+                    value={cfg.enginePaths[e.id] ?? ""}
+                    onChange={(ev) => set("enginePaths", { ...cfg.enginePaths, [e.id]: ev.target.value })}
+                    aria-label={`Ruta de ${e.exe}`}
+                  />
+                  {/* Si hay una ruta propia apuntando a la nada, se puede borrar
+                      sin tener que seleccionar el texto a mano. */}
+                  {cfg.enginePaths[e.id] ? (
+                    <button onClick={() => set("enginePaths", { ...cfg.enginePaths, [e.id]: "" })} aria-label={`Borrar ruta de ${e.exe}`} className="muted shrink-0 hover:opacity-100" title="Borrar esta ruta y volver a la carpeta vendor">
+                      <X size={12} strokeWidth={2} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <span className="mono shrink-0 text-[11px]">{e.version ?? e.note}</span>
+              {/* El texto de estado se RECORTA: antes una nota larga (el error de
+                  Perl de exiftool) se salía de la tarjeta y se montaba encima de
+                  la de al lado. El texto completo queda en el title. */}
+              <span className="mono max-w-[42%] shrink-0 truncate text-right text-[11px]" title={e.version ?? e.note}>{e.version ?? e.note}</span>
             </div>
           ))}
         </div>

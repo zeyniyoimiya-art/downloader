@@ -13,6 +13,8 @@ export interface EngineDef {
   role: string;
   versionArgs: string[];
   optional?: boolean;
+  /** Carpeta que el binario necesita al lado para arrancar (exiftool → perl). */
+  requiereCarpeta?: string;
 }
 
 // WHITELIST: único conjunto de ejecutables que el servidor puede lanzar
@@ -26,12 +28,12 @@ export const ENGINES: EngineDef[] = [
   { id: "spotdl", exe: "spotdl.exe", alt: [], bin: "spotdl", role: "Spotify con metadata y carátula", versionArgs: ["--version"] },
   { id: "lux", exe: "lux.exe", alt: [], bin: "lux", role: "Motor alterno (sitios CN)", versionArgs: ["-v"], optional: true },
   { id: "aria2c", exe: "aria2c.exe", alt: [], bin: "aria2c", role: "Aceleración multi-conexión (turbo)", versionArgs: ["--version"], optional: true },
-  { id: "magick", exe: "Magick.exe", alt: ["magick.exe"], bin: "magick", role: "Fotos a WEBP/JPG y carátulas", versionArgs: ["-version"] },
+  { id: "magick", exe: "Magick.exe", alt: ["magick.exe"], bin: "magick", role: "Fotos a WEBP/JPG y carátulas", versionArgs: ["-version"], optional: true },
   // exiftool: el paquete de Windows viene como `exiftool(-k).exe` + una carpeta
   // `exiftool_files\` con las DLLs de Perl. Sin esa carpeta el .exe no arranca.
   // Además NINGUNA parte de la app lo usa hoy (los metadatos van por ffprobe),
   // así que se marca opcional para que no aparezca como motor caído.
-  { id: "exiftool", exe: "exiftool.exe", alt: ["exiftool(-k).exe"], bin: "exiftool", role: "EXIF de fotos (sin uso actual)", versionArgs: ["-ver"], optional: true },
+  { id: "exiftool", exe: "exiftool.exe", alt: ["exiftool(-k).exe"], bin: "exiftool", role: "EXIF de fotos (sin uso actual)", versionArgs: ["-ver"], optional: true, requiereCarpeta: "exiftool_files" },
   { id: "deno", exe: "deno.exe", alt: [], bin: "deno", role: "Scripts de mantenimiento", versionArgs: ["--version"], optional: true },
   // ── Ampliación universal ──────────────────────────────────────────────────
   // streamlink: en directos resuelve la lista HLS maestra y permite elegir
@@ -177,15 +179,38 @@ async function probeOne(def: EngineDef): Promise<EngineStatus> {
   const base = { id: def.id, exe: def.exe, role: def.role, optional: !!def.optional };
   if (MOCK) return { ...base, path: `/mock/${def.exe}`, version: "mock-1.0", health: "ok", note: "mock" };
   const bin = resolveEngine(def.id);
-  if (!bin) return { ...base, path: null, version: null, health: def.optional ? "warn" : "down", note: "No encontrado" };
+  if (!bin) {
+    // Tres casos MUY distintos que antes se veían igual («No encontrado»):
+    //  · una ruta personalizada guardada que ya no existe (el usuario la escribió),
+    //  · un motor opcional que sencillamente no viene en el ZIP,
+    //  · un motor obligatorio que falta (esto sí hay que arreglarlo).
+    const propia = getConfig().enginePaths[def.id];
+    if (propia && !fs.existsSync(propia)) {
+      return { ...base, path: null, version: null, health: "warn", note: `tu ruta no existe: ${propia}` };
+    }
+    return { ...base, path: null, version: null, health: def.optional ? "warn" : "down",
+      note: def.optional ? "no incluido (opcional)" : "No encontrado" };
+  }
+  // El .exe está pero no puede arrancar sin su carpeta (caso exiftool: el ZIP
+  // trae el exe y NO la carpeta de Perl `exiftool_files`). Sin esto el panel
+  // enseñaba un error de Perl de tres líneas que no explica nada.
+  if (def.requiereCarpeta && !fs.existsSync(path.join(path.dirname(bin), def.requiereCarpeta))) {
+    return { ...base, path: bin, version: null, health: "warn",
+      note: `falta la carpeta ${def.requiereCarpeta} (junto al .exe): sin ella no arranca` };
+  }
   const { version, detail } = await probeVersion(def, bin);
+  // Si guardaste una ruta propia y no existe, se dice aunque el motor se haya
+  // encontrado por otro lado: si no, esa ruta se queda ahí mintiendo para siempre.
+  const propia = getConfig().enginePaths[def.id];
+  const rutaFantasma = !!propia && !fs.existsSync(propia);
+  const notaFantasma = rutaFantasma ? `tu ruta no existe; se usa ${path.basename(bin)}` : "";
   return {
     ...base,
     path: bin,
     version,
     // Encontrado pero sin versión = sigue siendo usable; solo es un aviso.
-    health: version ? "ok" : "warn",
-    note: version ? "Listo" : `Encontrado, pero sin versión: ${detail}`,
+    health: version && !rutaFantasma ? "ok" : "warn",
+    note: version ? (notaFantasma || "Listo") : `sin versión: ${detail}`,
   };
 }
 
