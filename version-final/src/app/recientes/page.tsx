@@ -65,7 +65,7 @@ export default function Recientes() {
   return (
     <div className="space-y-6">
       <div className="rise">
-        <h1 className="text-4xl font-bold tracking-[-0.035em]">Recientes</h1>
+        <p className="label" style={{ color: "var(--accent-ink)" }}>Historial</p><h1 className="display mt-2 text-[2.4rem]">Recientes</h1>
         <p className="muted mt-1 text-sm">Tu historial vive en <span className="mono">history.json</span>, en esta máquina.</p>
       </div>
       <Panel className="flex flex-wrap items-center gap-3 p-3">
@@ -97,7 +97,7 @@ export default function Recientes() {
                 ) : it.thumbnail ? (
                   <img loading="lazy" decoding="async" src={it.thumbnail} alt="" referrerPolicy="no-referrer" className="h-[120%] w-full object-cover transition-transform duration-700 group-hover:scale-105" style={{ transform: `translateY(${-((scrollY * 0.04 + i * 3) % 20)}px)` }} />
                 ) : (
-                  <div className="grid h-full place-items-center bg-gradient-to-br from-violet-500/30 to-pink-500/20">{isVideo(it) ? <Film size={36} strokeWidth={1} /> : isAV(it) ? <Music2 size={36} strokeWidth={1} /> : <ImageIcon size={36} strokeWidth={1} />}</div>
+                  <div className="grid h-full place-items-center bg-[linear-gradient(150deg,rgba(225,18,43,.16),rgba(255,255,255,.02))]">{isVideo(it) ? <Film size={36} strokeWidth={1} /> : isAV(it) ? <Music2 size={36} strokeWidth={1} /> : <ImageIcon size={36} strokeWidth={1} />}</div>
                 )}
                 {isAV(it) && playing !== it.id && <button onClick={() => { sfx.pop(); setMediaErr(null); setPlaying(it.id); }} className="btn absolute bottom-3 left-3 h-10 w-10 rounded-full bg-white/90 text-black opacity-0 group-hover:opacity-100" aria-label="Reproducir">▶</button>}
                 <span className="mono absolute right-3 top-3 rounded-lg bg-black/60 px-2 py-0.5 text-[11px] uppercase text-white">{it.format}</span>

@@ -30,10 +30,20 @@ export function Chrome() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pt-4 sm:px-6">
+      <header
+        className="sticky top-0 z-40 mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pt-4 pb-3 sm:px-6"
+        style={{
+          background: "linear-gradient(180deg, color-mix(in oklab, var(--bg) 94%, transparent) 0%, color-mix(in oklab, var(--bg) 78%, transparent) 70%, transparent 100%)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+        }}
+      >
         <Link href="/" className="flex items-center gap-2.5" aria-label="Linyue inicio">
           <Logo />
-          <div className="leading-tight"><div className="font-semibold tracking-tight">Linyue</div><div className="muted text-[11px]">Descargador universal local</div></div>
+          <div className="leading-tight">
+            <div className="font-semibold tracking-[-0.02em]">Linyue</div>
+            <div className="label mt-1 hidden sm:block">Descargador universal · local</div>
+          </div>
         </Link>
         <div className="flex items-center gap-3">
           {/* Las pestañas van en el bloque DERECHO, no centradas: la isla flota
@@ -51,8 +61,10 @@ export function Chrome() {
       <nav className="fixed inset-x-3 bottom-3 z-40 xl:hidden">
         <div className="tabbar sq flex justify-around p-1.5">
           {TABS.map((t) => (
-            <Link key={t.href} href={t.href} className={`btn flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[11px] sq-sm ${current === t.href ? "bg-[var(--fill-2)]" : "muted"}`}>
-              <t.icon size={20} strokeWidth={1.5} />{t.label}
+            <Link key={t.href} href={t.href} className={`btn relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] tracking-wide sq-sm ${current === t.href ? "" : "muted"}`}
+              style={current === t.href ? { color: "var(--fg)" } : undefined}>
+              <t.icon size={19} strokeWidth={1.5} style={current === t.href ? { color: "var(--red)" } : undefined} />{t.label}
+              {current === t.href && <span aria-hidden style={{ position: "absolute", top: 0, left: 18, right: 18, height: 1, background: "linear-gradient(90deg,transparent,var(--red),transparent)" }} />}
             </Link>
           ))}
         </div>
@@ -81,14 +93,15 @@ function Island() {
   // vacío, no estorba a nadie. Los banners van en su propio contenedor fijo.
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2 xl:top-auto xl:bottom-5">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[86px] z-50 flex flex-col items-center gap-2 xl:bottom-5">
       <div
         role="button" tabIndex={0} aria-expanded={expanded} aria-label="Isla de descargas"
         onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onClick={toggle} onKeyDown={(e) => e.key === "Enter" && toggle()}
         className={`pointer-events-auto overflow-hidden text-white ${engineDown ? "amber" : ""}`}
         style={{
-          viewTransitionName: "island", background: "rgba(0,0,0,.82)", backdropFilter: "blur(30px) saturate(180%)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,.15), 0 12px 40px -10px rgba(0,0,0,.6)",
+          viewTransitionName: "island", background: "rgba(6,6,7,.94)", backdropFilter: "blur(14px)",
+          border: "1px solid var(--stroke)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,.06), 0 20px 50px -18px rgba(0,0,0,.9), 0 0 24px -12px rgba(225,18,43,.8)",
           width: expanded ? "min(440px, 94vw)" : live.length ? 210 : 128, height: expanded ? Math.min(80 + live.length * 58, 380) : 36,
           borderRadius: expanded ? 32 : 999, transition: "width 650ms var(--spring), height 650ms var(--spring), border-radius 650ms var(--spring)",
         }}
@@ -102,7 +115,7 @@ function Island() {
                 <span className="mono text-white/70">{fmtBytes(speed)}/s</span>
               </>
             ) : (
-              <span className="mx-auto flex items-center gap-1.5 text-white/75"><span className={`h-1.5 w-1.5 rounded-full ${engineDown ? "bg-amber-400" : "bg-emerald-400"}`} />{engineDown ? "motor caído" : "en reposo"}</span>
+              <span className="mx-auto flex items-center gap-1.5 text-white/70"><span className="h-1.5 w-1.5 rounded-full" style={{ background: engineDown ? "var(--warn-ink)" : "var(--red)", boxShadow: `0 0 8px ${engineDown ? "var(--warn-ink)" : "var(--red)"}` }} />{engineDown ? "motor caído" : "en reposo"}</span>
             )}
           </div>
         ) : (
@@ -110,7 +123,7 @@ function Island() {
             <div className="mb-2 flex items-center justify-between text-xs text-white/70"><span>Cola activa</span><span className="mono">{fmtBytes(speed)}/s total</span></div>
             <div className="flex-1 space-y-1.5 overflow-auto">
               {live.map((j) => (
-                <div key={j.id} className="flex items-center gap-3 rounded-2xl bg-white/[.06] p-2 land">
+                <div key={j.id} className="flex items-center gap-3 sq-sm bg-white/[.05] p-2 land">
                   <Ring value={j.percent} speed={j.speed}>{Math.round(j.percent)}</Ring>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{j.title}</div>
@@ -130,7 +143,7 @@ function Island() {
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2">
         {toasts.map((t) => (
           <div key={t.id} className="banner-in glass glass-strong pointer-events-auto flex w-[min(380px,92vw)] items-start gap-3 p-3 sq-sm" style={{ transformOrigin: "top center" }}>
-            {t.kind === "ok" ? <CheckCircle2 className="mt-0.5 text-emerald-400" size={20} strokeWidth={1.5} /> : t.kind === "err" ? <AlertTriangle className="mt-0.5 text-rose-400" size={20} strokeWidth={1.5} /> : <Info className="mt-0.5 text-violet-300" size={20} strokeWidth={1.5} />}
+            {t.kind === "ok" ? <CheckCircle2 className="mt-0.5" style={{ color: "var(--ok-ink)" }} size={20} strokeWidth={1.5} /> : t.kind === "err" ? <AlertTriangle className="mt-0.5" style={{ color: "var(--danger-ink)" }} size={20} strokeWidth={1.5} /> : <Info className="mt-0.5" style={{ color: "var(--accent-ink)" }} size={20} strokeWidth={1.5} />}
             <div className="min-w-0"><div className="text-sm font-semibold">{t.title}</div>{t.body && <div className="muted line-clamp-2 text-xs">{t.body}</div>}</div>
           </div>
         ))}

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   icons: { icon: "/icon.svg", shortcut: "/icon.svg", apple: "/icon.svg" },
   authors: [{ name: "Lin Yue 林玥" }],
 };
-export const viewport: Viewport = { themeColor: "#07060c", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#050506", width: "device-width", initialScale: 1 };
 
 /**
  * TIPOGRAFÍA REAL.

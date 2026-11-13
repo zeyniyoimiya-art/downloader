@@ -128,6 +128,12 @@ describe("estadísticas", () => {
     expect(e.porMotor.find((c) => c.clave === "gallery-dl")?.bytes).toBe(500);
   });
 
+  it("el formato no se duplica por mayúsculas («MP3» y «mp3» son el mismo)", () => {
+    const e = calcularEstadisticas([item({ format: "MP3", size: 10 }), item({ format: "mp3", size: 20 })], ahora);
+    expect(e.porFormato).toHaveLength(1);
+    expect(e.porFormato[0]).toMatchObject({ clave: "MP3", archivos: 2, bytes: 30 });
+  });
+
   it("top de autores sin huecos y con límite", () => {
     const e = calcularEstadisticas(items, ahora);
     expect(e.topAutores.map((c) => c.clave)).toEqual(["Canal A", "Canal B"]);

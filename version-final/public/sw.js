@@ -2,7 +2,7 @@
 // Nunca cachea /api (descargas, SSE, medios) y, sobre todo, NUNCA el HTML:
 // si el HTML queda cacheado, tras actualizar la app el navegador sigue sirviendo
 // el bundle viejo y parece que los arreglos «no funcionan».
-const CACHE = "linyue-ui-v2";
+const CACHE = "linyue-ui-v3";
 self.addEventListener("install", (e) => {
   // A propósito NO se precachea "/": el HTML siempre debe venir de la red.
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/icon.svg", "/manifest.webmanifest"])));

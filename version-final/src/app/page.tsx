@@ -14,13 +14,13 @@ import { sfx } from "@/lib/client/sound";
 import type { ConfigView, Mode } from "@/lib/client/types";
 
 const MODES: { id: Mode; title: string; desc: string; icon: typeof Music2; grad: string }[] = [
-  { id: "all", title: "Todo", desc: "Fotos + Video + Audio", icon: Sparkles, grad: "from-emerald-400/40 to-teal-500/20" },
-  { id: "photo_video", title: "Fotos + Video", desc: "Galería y clips del post", icon: Images, grad: "from-cyan-400/40 to-blue-500/20" },
-  { id: "audio_photo", title: "Audio + Fotos", desc: "Música y carátulas", icon: Music2, grad: "from-fuchsia-500/40 to-purple-500/20" },
-  { id: "audio", title: "Música y audio", desc: "M4A · MP3 · FLAC · WAV · OPUS", icon: Music2, grad: "from-fuchsia-500/40 to-pink-500/20" },
-  { id: "video", title: "Video", desc: "MP4 · MKV · WEBM hasta 8K", icon: Film, grad: "from-violet-500/40 to-indigo-500/20" },
-  { id: "photo", title: "Fotos y galería", desc: "Originales o WEBP/JPG", icon: Images, grad: "from-cyan-400/40 to-sky-500/20" },
-  { id: "profile", title: "Perfil completo", desc: "Canal, cuenta o lista", icon: UserSquare2, grad: "from-amber-400/40 to-rose-500/20" },
+  { id: "all", title: "Todo", desc: "Fotos + Video + Audio", icon: Sparkles, grad: "grad-red" },
+  { id: "photo_video", title: "Fotos + Video", desc: "Galería y clips del post", icon: Images, grad: "grad-red" },
+  { id: "audio_photo", title: "Audio + Fotos", desc: "Música y carátulas", icon: Music2, grad: "grad-red" },
+  { id: "audio", title: "Música y audio", desc: "M4A · MP3 · FLAC · WAV · OPUS", icon: Music2, grad: "grad-red" },
+  { id: "video", title: "Video", desc: "MP4 · MKV · WEBM hasta 8K", icon: Film, grad: "grad-red" },
+  { id: "photo", title: "Fotos y galería", desc: "Originales o WEBP/JPG", icon: Images, grad: "grad-red" },
+  { id: "profile", title: "Perfil completo", desc: "Canal, cuenta o lista", icon: UserSquare2, grad: "grad-red" },
 ];
 const FORMATS: Record<Mode, readonly string[]> = {
   audio: AUDIO_FORMATS, video: VIDEO_FORMATS, photo: PHOTO_FORMATS,
@@ -153,8 +153,8 @@ export default function Home() {
     <div className="space-y-8">
       {/* Hero */}
       <section className="rise pt-8 text-center">
-        <p className="mono text-[11px] font-medium tracking-[.25em] text-[var(--accent-ink)]">DESCARGADOR UNIVERSAL · LOCAL</p>
-        <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-bold tracking-[-0.035em] sm:text-6xl" style={{ textWrap: "balance" }}>
+        <p className="label" style={{ color: "var(--accent-ink)" }}>Descargador universal · local · sin nube</p>
+        <h1 className="display mx-auto mt-5 max-w-3xl text-[2.6rem] sm:text-[4.1rem]" style={{ textWrap: "balance" }}>
           Baja lo que quieras, <span className="grad-text">con ficha completa.</span>
         </h1>
         <p className="muted mx-auto mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
@@ -164,7 +164,7 @@ export default function Home() {
 
       {/* Entrada multi-link */}
       <Panel className="rise p-4 sm:p-6" >
-        <div className={`absolute inset-x-8 top-0 h-px ${anyRunning ? "lightline" : ""}`} style={{ background: "linear-gradient(90deg,transparent,rgba(217,70,239,.7),transparent)" }} />
+        <div className={`absolute inset-x-8 top-0 h-px ${anyRunning ? "lightline" : ""}`} style={{ background: "linear-gradient(90deg,transparent,var(--red),transparent)" }} />
         <div className="relative">
           <textarea
             value={text} onChange={(e) => setText(e.target.value)} rows={5} spellCheck={false}
@@ -190,10 +190,10 @@ export default function Home() {
             .sort((a, b) => Number(b.id === rec) - Number(a.id === rec))
             .map((m) => (
               <button key={m.id} data-tilt onClick={() => pickMode(m.id)} aria-pressed={mode === m.id}
-                className={`btn glass sq-sm flex-col items-start p-4 text-left ${mode === m.id ? "ring-1 ring-fuchsia-300/60" : "opacity-80"}`}
+                className={`btn glass sq-sm flex-col items-start p-4 text-left ${mode === m.id ? "sel" : "opacity-75"}`}
                 style={{ justifyContent: "flex-start" }}>
                 <span className={`grid h-10 w-10 place-items-center bg-gradient-to-br ${m.grad} sq-sm`}><m.icon size={20} strokeWidth={1.5} className="ico" /></span>
-                <span className="mt-3 flex items-center gap-1.5 text-sm font-semibold">{m.title}{m.id === rec && <span className="mono sq-pill bg-emerald-400/20 px-1.5 py-0.5 text-[11px] font-bold text-[var(--ok-ink)]">TOP</span>}</span>
+                <span className="mt-3 flex items-center gap-1.5 text-sm font-semibold">{m.title}{m.id === rec && <span className="mono sq-pill px-1.5 py-0.5 text-[10px] font-bold tracking-widest" style={{ background: "var(--red-wash)", color: "var(--accent-ink)", boxShadow: "inset 0 0 0 1px var(--red-line)" }}>TOP</span>}</span>
                 <span className="muted text-[11px] font-normal">{m.desc}</span>
               </button>
             ))}
@@ -228,7 +228,7 @@ export default function Home() {
               title={d.min ? `espera ${d.label} antes de arrancar (la cola queda guardada)` : "arranca en cuanto haya hueco"}>{d.label}</button>
           ))}
           {cfg?.quietEnabled && (
-            <span className="mono sq-pill flex items-center gap-1 bg-indigo-400/15 px-2.5 py-1 text-[11px] text-indigo-200"
+            <span className="mono sq-pill flex items-center gap-1 px-2.5 py-1 text-[11px]" style={{ background: "var(--red-wash)", color: "var(--accent-ink)", boxShadow: "inset 0 0 0 1px var(--red-line)" }}
               title="En Ajustes activaste una ventana silenciosa: la cola solo arranca dentro de ese horario">
               <Moon size={12} strokeWidth={1.75} />{cfg.quietFrom}–{cfg.quietTo}
             </span>
@@ -270,7 +270,7 @@ export default function Home() {
                 <div className="muted mt-1 truncate text-xs">{[p.author, p.views != null ? fmtViews(p.views) : ""].filter(Boolean).join(" · ")}</div>
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
                   <span className="mono sq-pill flex items-center gap-1.5 bg-[var(--fill-2)] px-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }} />{p.platform}</span>
-                  <span className="mono sq-pill bg-fuchsia-500/20 px-2 py-0.5">motor: {p.engine}</span>
+                  <span className="mono sq-pill px-2 py-0.5" style={{ background: "var(--fill-2)" }}>motor: {p.engine}</span>
                   {p.entries ? <span className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{p.entries} elementos</span> : null}
                   {p.size ? <span className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5" title="tamaño aproximado">{fmtBytes(p.size)}</span> : null}
                   {p.heights?.slice(0, 5).map((h) => <span key={h} className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{h}p</span>)}
@@ -340,7 +340,7 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
   return (
     <Panel className="p-4 sm:p-6">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold tracking-tight">Cola</h2>
+        <h2 className="tick text-lg font-semibold tracking-tight">Cola</h2>
         <button onClick={() => { sfx.pop(); fetch("/api/jobs", { method: "DELETE", headers: { "x-linyue": "1" } }); }} className="btn btn-glass sq-pill px-3 py-1.5 text-xs"><Trash2 size={14} strokeWidth={1.5} />Limpiar terminados</button>
       </div>
       <ul className="space-y-2" onPointerMove={onMove} onPointerUp={onUp}>
@@ -350,7 +350,7 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
             <li key={j.id} className="scrim flex items-center gap-3 border border-[var(--line)] p-3 sq-sm"
               style={{ transform: dragging ? `translateY(${drag.y}px) scale(1.02)` : "none", transition: dragging ? "none" : "transform 500ms var(--spring)", zIndex: dragging ? 10 : 0, position: "relative", boxShadow: dragging ? "0 20px 40px -10px rgba(0,0,0,.5)" : undefined }}>
               <button aria-label="Reordenar" onPointerDown={(e) => onDown(e, j.id, i)} className="muted cursor-grab touch-none"><GripVertical size={16} /></button>
-              <Ring value={j.state === "done" ? 100 : j.percent} speed={j.state === "running" ? j.speed : 0} color={j.state === "error" ? "#fb7185" : j.state === "done" ? "#34d399" : "#d946ef"} size={40}>{j.state === "done" ? "✓" : `${Math.round(j.percent)}`}</Ring>
+              <Ring value={j.state === "done" ? 100 : j.percent} speed={j.state === "running" ? j.speed : 0} color={j.state === "error" ? "var(--danger-ink)" : j.state === "done" ? "var(--ok-ink)" : "var(--red)"} size={40}>{j.state === "done" ? "✓" : `${Math.round(j.percent)}`}</Ring>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{j.title}</div>
                 <div className="mono muted truncate text-[11px]">{j.label} · {j.engine} · {j.format.toUpperCase()} · {label[j.state]}{j.state === "running" && ` · ${fmtBytes(j.speed)}/s · ETA ${j.eta || "—"}`}{j.state === "queued" && j.startAt && ` · empieza a las ${new Date(j.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}{j.error && ` · ${j.error}`}</div>

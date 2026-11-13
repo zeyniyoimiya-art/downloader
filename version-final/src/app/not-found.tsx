@@ -6,7 +6,7 @@ export default function NotFound() {
     <div className="grid min-h-[60vh] place-items-center">
       <div className="relative">
         <div className="glass sq p-12 text-center" style={{ filter: "url(#ly-shatter)" }}>
-          <div className="text-8xl font-bold tracking-tighter bg-gradient-to-br from-violet-300 to-pink-300 bg-clip-text text-transparent">404</div>
+          <div className="text-8xl font-bold tracking-tighter grad-text">404</div>
         </div>
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
           <path d="M52 0 L46 38 L60 52 L40 100 M46 38 L0 30 M60 52 L100 62 M46 38 L80 0" stroke="rgba(255,255,255,.55)" strokeWidth=".4" fill="none" />

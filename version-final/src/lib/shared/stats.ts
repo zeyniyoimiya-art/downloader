@@ -111,7 +111,7 @@ export function calcularEstadisticas(items: ItemHistorial[], ahora = Date.now(),
   return {
     total: { archivos: limpios.length, bytes, segundos, plataformas },
     porPlataforma: agrupar(limpios, (i) => i.source),
-    porFormato: agrupar(limpios, (i) => i.format.replace(/\s*\(.*\)$/, "")),
+    porFormato: agrupar(limpios, (i) => i.format.replace(/\s*\(.*\)$/, "").toUpperCase()),
     porMotor: agrupar(limpios, (i) => i.engine),
     porDia,
     topAutores: agrupar(limpios.filter((i) => i.author), (i) => i.author ?? "", 8),

@@ -7,10 +7,10 @@ import { Panel } from "@/components/ui";
 import { fmtBytes, fmtDuration } from "@/lib/shared/progress";
 import type { Estadisticas } from "@/lib/shared/stats";
 
-function Barra({ valor, max, color = "linear-gradient(90deg,#8b5cf6,#ec4899)" }: { valor: number; max: number; color?: string }) {
+function Barra({ valor, max, color = "linear-gradient(90deg, var(--red-deep), var(--red) 60%, var(--red-bright))" }: { valor: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.max(2, Math.round((valor / max) * 100)) : 2;
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--fill-2)]" role="presentation">
+    <div className="h-[3px] w-full overflow-hidden rounded-full" role="presentation" style={{ background: "var(--fill-2)", boxShadow: "inset 0 0 0 1px var(--line)" }}>
       <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${pct}%`, background: color }} />
     </div>
   );
@@ -37,7 +37,7 @@ export default function EstadisticasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-4xl font-bold tracking-[-0.035em]">Estadísticas</h1>
+        <p className="label" style={{ color: "var(--accent-ink)" }}>Datos</p><h1 className="display mt-2 text-[2.4rem]">Estadísticas</h1>
         <p className="muted mt-1 text-sm">Calculadas en tu PC desde <span className="mono">history.json</span>. Cero telemetría.</p>
       </div>
 
@@ -49,21 +49,34 @@ export default function EstadisticasPage() {
           { icon: Trophy, label: "El más grande", valor: fmtBytes(d.mayorBytes), sub: `media ${fmtBytes(d.mediaBytes)}` },
         ].map((k) => (
           <Panel key={k.label} className="p-5">
-            <div className="muted flex items-center gap-2 text-xs"><k.icon size={14} strokeWidth={1.5} />{k.label}</div>
-            <div className="mt-2 text-2xl font-bold tracking-tight">{k.valor}</div>
+            <div className="label flex items-center gap-2"><k.icon size={13} strokeWidth={1.5} style={{ color: "var(--red)" }} />{k.label}</div>
+            <div className="num mt-3 text-[1.75rem] font-bold tracking-tight">{k.valor}</div>
             <div className="muted text-xs">{k.sub}</div>
           </Panel>
         ))}
       </div>
 
       <Panel className="p-5">
-        <h2 className="mb-4 font-semibold">Últimos {d.porDia.length} días</h2>
-        <div className="flex h-40 items-end gap-1.5" role="img" aria-label="Descargas por día">
+        <h2 className="mb-4 tick font-semibold tracking-tight">Últimos {d.porDia.length} días</h2>
+        {/* Retícula del gráfico: tres líneas al 25/50/75 % y una base sólida.
+            Sin ellas las barras flotan y no se puede leer una escala. */}
+        <div
+          className="relative flex h-40 items-end gap-1.5"
+          role="img"
+          aria-label="Descargas por día"
+          style={{
+            backgroundImage:
+              "linear-gradient(to top, var(--line) 1px, transparent 1px), linear-gradient(to top, var(--line) 1px, transparent 1px), linear-gradient(to top, var(--line) 1px, transparent 1px)",
+            backgroundSize: "100% 25%, 100% 50%, 100% 75%",
+            backgroundRepeat: "no-repeat",
+            borderBottom: "1px solid var(--stroke)",
+          }}
+        >
           {d.porDia.map((x) => {
             const alto = Math.max(2, Math.round((x.bytes / maxDia) * 100));
             return (
               <div key={x.dia} className="group relative flex h-full flex-1 flex-col items-center justify-end" title={`${x.dia}: ${x.archivos} archivo(s) · ${fmtBytes(x.bytes)}`}>
-                <div className="w-full rounded-t-md bg-gradient-to-t from-fuchsia-500/70 to-violet-400/70 transition-all group-hover:from-fuchsia-400 group-hover:to-violet-300" style={{ height: `${alto}%`, minHeight: 2 }} />
+                <div className="w-full transition-all" style={{ height: `${alto}%`, minHeight: 2, background: "linear-gradient(to top, var(--red-deep), var(--red) 70%, var(--red-bright))", boxShadow: "0 0 18px -8px var(--red)" }} />
               </div>
             );
           })}
@@ -76,7 +89,7 @@ export default function EstadisticasPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="self-start p-5">
-          <h2 className="mb-3 font-semibold">Por plataforma</h2>
+          <h2 className="mb-3 tick font-semibold tracking-tight">Por plataforma</h2>
           <ul className="space-y-3">
             {d.porPlataforma.slice(0, 8).map((x) => (
               <li key={x.clave}>
@@ -92,18 +105,18 @@ export default function EstadisticasPage() {
 
         <div className="space-y-6">
           <Panel className="p-5">
-            <h2 className="mb-3 font-semibold">Por formato</h2>
+            <h2 className="mb-3 tick font-semibold tracking-tight">Por formato</h2>
             <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               {d.porFormato.slice(0, 10).map((x) => (
                 <li key={x.clave} className="flex items-baseline justify-between gap-2">
                   <span className="mono">{x.clave}</span>
-                  <span className="muted text-xs">{x.archivos} · {fmtBytes(x.bytes)}</span>
+                  <span className="num muted text-xs">{x.archivos} · {fmtBytes(x.bytes)}</span>
                 </li>
               ))}
             </ul>
           </Panel>
           <Panel className="p-5">
-            <h2 className="mb-3 font-semibold">Motores que más usas</h2>
+            <h2 className="mb-3 tick font-semibold tracking-tight">Motores que más usas</h2>
             <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               {d.porMotor.slice(0, 8).map((x) => (
                 <li key={x.clave} className="flex items-baseline justify-between gap-2">
@@ -115,7 +128,7 @@ export default function EstadisticasPage() {
           </Panel>
           {!!d.topAutores.length && (
             <Panel className="p-5">
-              <h2 className="mb-3 font-semibold">Top canales</h2>
+              <h2 className="mb-3 tick font-semibold tracking-tight">Top canales</h2>
               <ol className="space-y-1 text-sm">
                 {d.topAutores.map((x, i) => (
                   <li key={x.clave} className="flex items-baseline justify-between gap-2">

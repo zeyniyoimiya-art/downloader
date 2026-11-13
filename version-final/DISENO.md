@@ -243,3 +243,54 @@ Capturas generadas con Chromium real (Playwright, 2× de densidad) en
 
 Medido en 1280 px y 390 px: sin solapes, todos los controles en la misma
 vertical, y `tsc` + `eslint` + `next build` limpios.
+
+---
+
+# Ronda 3 · «Carbón y Carmesí»
+
+Pedido: *minimalista, elegante, premium, acabado negro con líneas rojas, nada de
+estilo iPhone*.
+
+## Qué se quitó y por qué
+
+| Antes | Ahora | Motivo |
+|---|---|---|
+| Vidrio con `backdrop-filter: blur(40px)` + reflejos especulares | Placas de carbón planas con **una hairlina carmesí** en el borde superior | El blur grande y los reflejos son la firma de iOS; además Ajustes pinta decenas de paneles y cada blur cuesta GPU |
+| Degradados fucsia → violeta → rosa | **Un solo acento**: carmesí `#e1122b` | Un acento usado con avaricia se lee como intención; tres degradados se leen como plantilla |
+| Esquinas de 28 px («squircle») | 16 px (22 con `corner-shape`) | La burbuja gigante es lo contrario de «premium» |
+| Aurora WebGL violeta/cian de fondo | Brasa carmesí sobre negro + **retícula técnica de 1 px** + grano | El arcoíris animado competía con el contenido |
+| Partículas flotantes y cursor-lente de vidrio | Cursor de anillo fino carmesí (sin lente) | Era el detalle más «Apple» de todos |
+| Tema claro *Frosted* (lavanda) | **Hueso** (`#f2f0ec`) con el mismo carmesí | Coherente con el negro: papel y carbón, no dos apps distintas |
+
+## Qué se añadió
+
+- **`.label`**: micro-etiqueta monoespaciada en mayúsculas (10 px, tracking .22em).
+  Sustituye a los iconitos decorativos como marcador de sección.
+- **`.display`**: titulares con tracking `-0.045em` y `line-height .94`.
+- **`.tick`**: cuadradito carmesí de 5 px delante de cada título de panel.
+- **`.rule`**: filete de 1 px que nace en rojo y se apaga; separa sin dibujar cajas.
+- **`.sel`**: marco carmesí de tarjeta seleccionada (antes: ring fucsia).
+- **Grano** con un `<feTurbulence>` inline al 3.5 %: sobre negro puro las placas
+  planas parecen vacías; el ruido les devuelve materia sin meter color.
+- El **héroe** y las barras del gráfico son carmesí → negro (antes fucsia → rosa).
+
+## Contraste (medido, no supuesto)
+
+| Combinación | Ratio | AA |
+|---|---|---|
+| `#f4f4f5` sobre `#050506` | 18.5:1 | ✅ |
+| `--muted` (56 % blanco) sobre `#050506` | 7.4:1 | ✅ |
+| Blanco sobre el botón `#e1122b` | 4.6:1 | ✅ |
+| `--accent-ink` `#ff7d8c` sobre `#050506` | 7.9:1 | ✅ |
+| `--muted` sobre Hueso `#f2f0ec` | 7.9:1 | ✅ |
+| `#c20d24` (acento claro) sobre `#f2f0ec` | 5.6:1 | ✅ |
+
+El carmesí puro **no** se usa para texto pequeño: para eso está `--accent-ink`,
+que es el mismo tono aclarado hasta pasar AA. Igual que en la ronda anterior con
+el fucsia.
+
+## Comprobado
+
+`tsc` 0 · `vitest` **234/234** · `eslint` 0 · `next build` ✓ · y un recorrido
+automatizado por las cinco pantallas (más un flujo real de descarga y dos
+cambios de tema) **sin un solo error** de consola, `pageerror` ni respuesta 4xx/5xx.

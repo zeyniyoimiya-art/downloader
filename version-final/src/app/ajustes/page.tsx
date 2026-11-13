@@ -80,12 +80,12 @@ export default function Ajustes() {
   };
   const ok = engines.filter((e) => e.health === "ok").length;
 
-  const input = "mono scrim w-full min-w-0 border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill focus:border-fuchsia-400/50";
+  const input = "mono scrim w-full min-w-0 border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill focus:border-[var(--red-line)]";
 
   return (
     <div className="space-y-6">
       <div className="rise flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-4xl font-bold tracking-[-0.035em]">Ajustes</h1><p className="muted mt-1 text-sm">Se guardan en <span className="mono">config.json</span> local.</p></div>
+        <div><p className="label" style={{ color: "var(--accent-ink)" }}>Configuración local</p><h1 className="display mt-2 text-[2.4rem]">Ajustes</h1><p className="muted mt-2 text-sm">Se guardan en <span className="mono">config.json</span> · nada sale de esta máquina.</p></div>
         <div className="flex gap-2">
           <button onClick={reset} className="btn btn-glass h-10 px-4 text-sm sq-pill"><RotateCcw size={15} />Restablecer</button>
           <button onClick={save} className="btn btn-primary h-10 px-5 text-sm sq-pill"><Save size={15} />Guardar</button>
@@ -95,7 +95,7 @@ export default function Ajustes() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
         <Panel className="p-5">
-          <h2 className="mb-1 font-semibold">Descargas</h2>
+          <h2 className="mb-1 tick font-semibold tracking-tight">Descargas</h2>
           <Row label="Carpeta de salida"><input className={input} value={cfg.outputDir} onChange={(e) => set("outputDir", e.target.value)} aria-label="Carpeta de salida" /></Row>
           <Row label="Audio por defecto"><select className={`${input} w-[148px]`} value={cfg.audioFormat} onChange={(e) => set("audioFormat", e.target.value)}>{AUDIO_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Row>
           <Row label="Video por defecto"><div className="grid w-full grid-cols-2 gap-2">
@@ -108,7 +108,7 @@ export default function Ajustes() {
               abrir 200 procesos en Windows agota los handles (EMFILE) y los
               CDN responden 429 a todo el que llega con esa cara. */}
           <Row label="Descargas en paralelo" hint={cfg.concurrency === 0 ? `sin límite (techo ${cfg.maxConcurrency})` : `${cfg.concurrency} a la vez`}>
-            <input type="range" min={0} max={32} value={cfg.concurrency} onChange={(e) => set("concurrency", +e.target.value)} className="min-w-0 flex-1 accent-fuchsia-400" aria-label="Descargas en paralelo" />
+            <input type="range" min={0} max={32} value={cfg.concurrency} onChange={(e) => set("concurrency", +e.target.value)} className="min-w-0 flex-1 accent-[var(--red)]" aria-label="Descargas en paralelo" />
             <span className="mono w-9 shrink-0 text-right text-sm tabular-nums">{cfg.concurrency === 0 ? "∞" : cfg.concurrency}</span>
           </Row>
           <Row label="Techo de seguridad" hint="Procesos máx. cuando el paralelismo es ∞"><input type="number" min={1} max={64} className={`${input} w-24 text-right`} value={cfg.maxConcurrency} onChange={(e) => set("maxConcurrency", Math.max(1, Math.min(64, +e.target.value || 1)))} /></Row>
@@ -129,7 +129,7 @@ export default function Ajustes() {
         </Panel>
 
         <Panel className="p-5">
-          <h2 className="mb-1 font-semibold">Programador</h2>
+          <h2 className="mb-1 tick font-semibold tracking-tight">Programador</h2>
           <p className="muted mb-2 text-xs">
             La cola no arranca nada nuevo fuera de la ventana; lo que ya está bajando NO se corta (matar una descarga al 90 % sería peor).
             Los trabajos queda guardados: si cierras la app, siguen esperando su hora.
@@ -146,7 +146,7 @@ export default function Ajustes() {
         </Panel>
 
         <Panel className="p-5">
-          <h2 className="mb-1 font-semibold">Fidelidad de audio</h2>
+          <h2 className="mb-1 tick font-semibold tracking-tight">Fidelidad de audio</h2>
           <p className="muted mb-2 text-xs">Un FLAC solo es FLAC si el origen lo era. YouTube sirve AAC/Opus: reconvertirlo «a FLAC» da un archivo 5 veces más pesado con el mismo sonido.</p>
           <Row label="Si pido un formato mejor que el origen" hint={FIDELIDAD[cfg.fidelity]}>
             <select className={`${input} w-full`} value={cfg.fidelity} onChange={(e) => set("fidelity", e.target.value as typeof cfg.fidelity)} aria-label="Fidelidad">
@@ -159,7 +159,7 @@ export default function Ajustes() {
         </Panel>
 
         <Panel className="p-5">
-          <h2 className="mb-1 font-semibold">Vídeo, códecs y pistas</h2>
+          <h2 className="mb-1 tick font-semibold tracking-tight">Vídeo, códecs y pistas</h2>
           <p className="muted mb-2 text-xs">El contenedor (MP4/MKV) es la caja; el códec es lo que va dentro. Un TV viejo quiere H.264 aunque el sitio sirva AV1.</p>
           <Row label="Códec de vídeo" hint={VIDEO_CODECS.find((c) => c.id === cfg.videoCodec)?.note}>
             <select className={`${input} w-full`} value={cfg.videoCodec} onChange={(e) => set("videoCodec", e.target.value as typeof cfg.videoCodec)} aria-label="Códec de vídeo">
@@ -185,13 +185,13 @@ export default function Ajustes() {
 
         <div className="space-y-6">
           <Panel className="p-5">
-            <h2 className="mb-1 font-semibold">Apariencia y sonido</h2>
-            <Row label="Tema"><Segmented options={[{ value: "dark", label: "Obsidiana" }, { value: "light", label: "Frosted" }]} value={theme} onChange={(v) => v !== theme && toggleTheme()} /></Row>
+            <h2 className="mb-1 tick font-semibold tracking-tight">Apariencia y sonido</h2>
+            <Row label="Tema" hint="Carbón y carmesí · el claro es hueso, no pastel"><Segmented options={[{ value: "dark", label: "Carbón" }, { value: "light", label: "Hueso" }]} value={theme} onChange={(v) => v !== theme && toggleTheme()} /></Row>
           <Row label="Sonidos de interfaz" hint="Web Audio sintetizado"><Toggle label="Sonido" checked={!muted} onChange={toggleMute} /></Row>
           </Panel>
 
           <Panel className="p-5">
-          <h2 className="mb-1 font-semibold">Red, cookies y límites</h2>
+          <h2 className="mb-1 tick font-semibold tracking-tight">Red, cookies y límites</h2>
           <Row label="Cookies del navegador" hint="yt-dlp las lee del perfil, nunca se copian aquí"><select className={`${input} w-[148px]`} value={cfg.cookiesFromBrowser} onChange={(e) => set("cookiesFromBrowser", e.target.value)}>
             <option value="">desactivado</option>
             {["chrome", "edge", "firefox", "brave", "opera", "vivaldi", "chromium", "safari"].map((b) => <option key={b}>{b}</option>)}
@@ -207,7 +207,7 @@ export default function Ajustes() {
           <Row label="Reintentos por descarga" hint="Antes de darse por vencido"><input type="number" min={0} max={10} className={`${input} w-24 text-right`} value={cfg.retries} onChange={(e) => set("retries", Math.max(0, Math.min(10, +e.target.value || 0)))} /></Row>
         </Panel>
           <Panel className="p-5">
-            <h2 className="mb-3 flex items-center gap-2 font-semibold"><Keyboard size={16} strokeWidth={1.5} />Atajos</h2>
+            <h2 className="mb-3 tick flex items-center gap-2 font-semibold"><Keyboard size={16} strokeWidth={1.5} />Atajos</h2>
             <ul className="grid grid-cols-2 gap-2 text-xs">
               {[["Ctrl/⌘ + Enter", "Descargar"], ["Alt + 1…4", "Cambiar pestaña"], ["Click derecho", "Menú de ficha"], ["Arrastrar ⋮⋮", "Reordenar cola"]].map(([k, v]) => <li key={k} className="scrim flex justify-between gap-2 px-3 py-2 sq-sm"><span className="mono">{k}</span><span className="muted">{v}</span></li>)}
             </ul>
@@ -218,7 +218,7 @@ export default function Ajustes() {
       {/* Panel Motor vivo */}
       <Panel className="p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 font-semibold"><Cpu size={17} strokeWidth={1.5} />Motor vivo <span className="mono muted text-xs">{ok}/{engines.length} listos</span></h2>
+          <h2 className="tick flex items-center gap-2 font-semibold"><Cpu size={17} strokeWidth={1.5} />Motor vivo <span className="mono muted text-xs">{ok}/{engines.length} listos</span></h2>
           <div className="flex items-center gap-2">
             <input className={`${input} w-full sm:w-72`} value={cfg.vendorDir} onChange={(e) => set("vendorDir", e.target.value)} aria-label="Carpeta vendor" title="Carpeta /vendor" />
             <button onClick={doUpdate} disabled={updating} className="btn btn-glass h-9 px-4 text-xs sq-pill" title="yt-dlp -U · gallery-dl --update · BaiduPCS-Go update">
@@ -230,7 +230,7 @@ export default function Ajustes() {
         <div className="grid gap-2 md:grid-cols-2">
           {engines.map((e, i) => (
             <div key={e.id} className="scrim rise flex items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
-              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.health === "ok" ? "bg-emerald-400" : e.health === "warn" ? "bg-amber-400" : "bg-rose-500"}`} style={{ boxShadow: `0 0 10px ${e.health === "ok" ? "#34d399" : e.health === "warn" ? "#fbbf24" : "#f43f5e"}` }} />
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.health === "ok" ? "" : ""}`} style={{ background: e.health === "ok" ? "var(--ok-ink)" : e.health === "warn" ? "var(--warn-ink)" : "var(--danger-ink)", boxShadow: `0 0 9px ${e.health === "ok" ? "var(--ok-ink)" : e.health === "warn" ? "var(--warn-ink)" : "var(--danger-ink)"}` }} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2"><span className="mono text-sm">{e.exe}</span>{e.optional && <span className="muted text-[11px]">opcional</span>}</div>
                 <div className="muted truncate text-[11px]">{e.role}</div>
@@ -248,7 +248,7 @@ export default function Ajustes() {
         <div className="flex-1"><div className="font-semibold">Linyue Studio</div><div className="muted text-xs">Descargador universal local · sin nube, sin telemetría (Sentry y Plausible OFF)</div></div>
         <div className="text-right">
           <div className="text-xs muted">hecho por</div>
-          <div className="text-sm font-medium">Lin Yue <span className="inline-block rotate-[-6deg] border border-rose-400/60 px-1 text-[var(--danger-ink)]" style={{ fontFamily: "serif" }}>林玥</span></div>
+          <div className="text-sm font-medium">Lin Yue <span className="inline-block rotate-[-6deg] border px-1 text-[var(--danger-ink)]" style={{ fontFamily: "serif" }}>林玥</span></div>
         </div>
       </Panel>
     </div>
