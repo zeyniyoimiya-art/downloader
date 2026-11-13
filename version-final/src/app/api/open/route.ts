@@ -1,4 +1,5 @@
 // Abrir carpeta en el explorador del sistema / escucha rápida con ffplay. Solo rutas dentro de la carpeta de salida.
+import { guard, blocked } from "@/lib/server/guard";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { resolveEngine, MOCK } from "@/lib/server/engines";
 const Body = z.object({ id: z.string().regex(/^[a-z0-9]{1,12}$/).optional(), play: z.boolean().optional() });
 
 export async function POST(req: Request) {
+  { const g = guard(req); if (!g.ok) return blocked(g); }
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return Response.json({ error: "Petición inválida" }, { status: 400 });
   const cfg = getConfig();

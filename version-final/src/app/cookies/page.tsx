@@ -19,17 +19,17 @@ export default function Cookies() {
 
   const save = async (site: string, content: string) => {
     sfx.pop();
-    const r = await fetch("/api/cookies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site, content }) });
+    const r = await fetch("/api/cookies", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ site, content }) });
     const d = await r.json();
     if (!r.ok) return toast({ kind: "err", title: "No se guardó", body: d.error });
     toast({ kind: "ok", title: `Cookies de ${META[site].name} guardadas` }); setDraft((x) => ({ ...x, [site]: "" })); void load();
   };
   const test = async (site: string) => {
     sfx.pop(); setTested((x) => ({ ...x, [site]: "busy" }));
-    const d = await (await fetch("/api/cookies", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site }) })).json();
+    const d = await (await fetch("/api/cookies", { method: "PUT", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ site }) })).json();
     setTested((x) => ({ ...x, [site]: d.ok })); toast({ kind: d.ok ? "ok" : "err", title: d.ok ? "Sesión válida" : "Sesión no válida", body: d.message });
   };
-  const del = async (site: string) => { sfx.pop(); await fetch(`/api/cookies?site=${site}`, { method: "DELETE" }); setTested((x) => ({ ...x, [site]: false })); void load(); };
+  const del = async (site: string) => { sfx.pop(); await fetch(`/api/cookies?site=${site}`, { method: "DELETE", headers: { "x-linyue": "1" } }); setTested((x) => ({ ...x, [site]: false })); void load(); };
 
   return (
     <div className="space-y-6">

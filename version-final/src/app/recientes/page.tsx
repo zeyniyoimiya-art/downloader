@@ -40,15 +40,15 @@ export default function Recientes() {
 
   const act = async (kind: string, it: HistoryView) => {
     sfx.pop(); setMenu(null);
-    if (kind === "open") await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id }) });
-    if (kind === "play") { const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id, play: true }) }); if (!r.ok) toast({ kind: "err", title: "ffplay no disponible" }); }
+    if (kind === "open") await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id }) });
+    if (kind === "play") { const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id, play: true }) }); if (!r.ok) toast({ kind: "err", title: "ffplay no disponible" }); }
     if (kind === "copy") { await navigator.clipboard.writeText(it.path); toast({ kind: "info", title: "Ruta copiada" }); }
     if (kind === "redo") {
       const fmtOk = /^[a-z0-9]{2,8}$/.test(it.format) ? it.format : "mp4";
-      await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
+      await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
       toast({ kind: "info", title: "Re-bajando", body: it.title });
     }
-    if (kind === "del") { await fetch(`/api/history?id=${it.id}`, { method: "DELETE" }); setItems((x) => x?.filter((y) => y.id !== it.id) ?? null); }
+    if (kind === "del") { await fetch(`/api/history?id=${it.id}`, { method: "DELETE", headers: { "x-linyue": "1" } }); setItems((x) => x?.filter((y) => y.id !== it.id) ?? null); }
   };
 
   // Clasificar por la extensión REAL del archivo en disco (it.path), no por el

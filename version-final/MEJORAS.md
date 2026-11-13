@@ -226,3 +226,28 @@ tests/mejoras.test.ts         12 tests nuevos
 ```
 
 **+232 / −30 líneas.** Nada eliminado que funcionara; solo fallos cerrados.
+
+---
+
+## 7. Registro de fases posteriores (4 → 8)
+
+Lo de arriba es la revisión inicial (fase 1, 107 tests). Después vinieron cinco
+entregas más, todas sobre `mejoras/revision-codigo` y con la misma regla: **cero
+humo**. Si algo no se puede, se dice y se explica por qué.
+
+| Fase | Qué entró | Verificación |
+|---|---|---|
+| 4 | Descargador universal, cookies, paralelismo con techo, auditoría CSRF/rutas, detección de FLAC falso | `tsc` 0 · 145 tests |
+| 5 | Catálogo de audio/vídeo/imagen, resolución/fps/bitrate/calidad, **códecs reales** | `tsc` 0 · 176 tests |
+| 6 | Familia Baidu: 网盘 con cuenta propia y 贴吧 sí; Wenku **no** (y se explica) | 193 tests |
+| 7 | Cola persistente, rangos de lista, nombres, proxy, control de disco, auto-actualización de motores | 208 tests · `next build` ✓ |
+| 8 | Programador (ventana + retraso), panel de estadísticas, 蓝奏云 nativo y 阿里云盘 | **233 tests** · `tsc` 0 · `eslint` 0 · `next build` ✓ |
+
+Detalle de cada una en `MOTORES.md` (§11–19). Lo que la fase 8 **no** promete:
+
+- **Lanzou** cambia de dominio y de HTML cada pocos meses; hay varios patrones y
+  un error explícito *«Lanzou cambió el formato»*. No es un soporte eterno.
+- **阿里云盘** exige `aliyunpan login` una vez en tu terminal. La app no pide ni
+  guarda credenciales de nadie, ni siquiera las tuyas.
+- Las **estadísticas** se calculan en tu PC desde `history.json`: no hay tabla
+  nueva, ni telemetría, ni salida a internet.

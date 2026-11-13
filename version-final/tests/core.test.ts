@@ -75,7 +75,9 @@ describe("router de motores", () => {
 });
 
 describe("registro de motores (fusión)", () => {
-  it("expone exactamente 12 motores", () => expect(ENGINES).toHaveLength(12));
+  // 16 = los 8 originales + aria2c/ffmpeg/magick/annas + streamlink, you-get,
+  // curl y BaiduPCS-Go (百度网盘)
+  it("expone exactamente 17 motores", () => expect(ENGINES).toHaveLength(17));
   it("todos declaran args de versión", () => expect(ENGINES.every((e) => e.versionArgs.length > 0)).toBe(true));
   it("yt-dlp acepta el alias ytdlp.exe", () => expect(ENGINES.find((e) => e.id === "yt-dlp")?.alt).toContain("ytdlp.exe"));
 });

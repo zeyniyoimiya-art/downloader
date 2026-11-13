@@ -4,10 +4,11 @@
 */
 // "/" Descargador: hero, textarea multi-link con chips por línea, modos, formatos (FLIP), vista previa y cola viva.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Download, Eye, FolderOpen, Music2, Film, Images, UserSquare2, GripVertical, RotateCcw, X, Pause, Play, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Download, Eye, FolderOpen, Music2, Film, Images, UserSquare2, GripVertical, RotateCcw, X, Pause, Play, Trash2, Sparkles, Loader2, Clock, Moon } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Odometer, Panel, Ring } from "@/components/ui";
 import { parseLinks, routeEngine, primaryMode, availableModes, recommendMode, AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platforms";
+import type { VideoCodec } from "@/lib/shared/codecs";
 import { fmtBytes, fmtDuration, fmtViews } from "@/lib/shared/progress";
 import { sfx } from "@/lib/client/sound";
 import type { ConfigView, Mode } from "@/lib/client/types";
@@ -26,9 +27,28 @@ const FORMATS: Record<Mode, readonly string[]> = {
   profile: [...VIDEO_FORMATS, "mp3", "m4a"],
   all: VIDEO_FORMATS, photo_video: VIDEO_FORMATS, audio_photo: AUDIO_FORMATS,
 };
-const QUALITIES = ["best", "4320", "2160", "1440", "1080", "720", "480"];
+// Resoluciones que existen de verdad (144p de los vídeos viejos incluida).
+// Programador (fase 8): retrasar el arranque sin cerrar la app. 0 = ahora.
+// No es un cron: el trabajo queda en la cola persistente y arranca solo cuando
+// llega su hora, aunque cierres y vuelvas a abrir la app.
+const DELAYS: { min: number; label: string }[] = [
+  { min: 0, label: "Ahora" },
+  { min: 15, label: "15 min" },
+  { min: 60, label: "1 h" },
+  { min: 180, label: "3 h" },
+];
+const QUALITIES = ["best", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"];
+// Códecs ofrecidos en el propio descargador (los 5 que sirven los sitios;
+// ProRes/Theora solo tienen sentido recodificando y viven en Ajustes).
+const CODECS: { id: VideoCodec; label: string; title: string }[] = [
+  { id: "auto", label: "Auto", title: "el mejor que ofrezca el sitio" },
+  { id: "h264", label: "H.264", title: "compatible con todo (TV, móvil, Windows)" },
+  { id: "h265", label: "H.265", title: "HEVC: ~40 % menos peso" },
+  { id: "av1", label: "AV1", title: "el más eficiente" },
+  { id: "vp9", label: "VP9", title: "el estándar de YouTube" },
+];
 
-interface Preview { url: string; platform: string; color: string; engine: string; title?: string; author?: string; duration?: number; thumbnail?: string; heights?: number[]; error?: string; note?: string; entries?: number; date?: string; views?: number }
+interface Preview { url: string; platform: string; color: string; engine: string; title?: string; author?: string; duration?: number; thumbnail?: string; heights?: number[]; error?: string; note?: string; entries?: number; date?: string; views?: number; size?: number }
 
 export default function Home() {
   const { jobs, toast, jobAction } = useApp();
@@ -36,8 +56,10 @@ export default function Home() {
   const [picked, setPicked] = useState<Mode | null>(null); // modo elegido a mano (null = seguir recomendación)
   const [format, setFormat] = useState("mp3");
   const [quality, setQuality] = useState("1080");
+  const [codec, setCodec] = useState<VideoCodec>("auto");
+  const [delay, setDelay] = useState(0); // minutos de retraso elegidos en la home
   const [cfg, setCfg] = useState<ConfigView | null>(null);
-  const [status, setStatus] = useState({ files: 0, outputDir: "" });
+  const [status, setStatus] = useState<{ files: number; outputDir: string; freeBytes?: number | null; freeLabel?: string | null }>({ files: 0, outputDir: "" });
   const [busy, setBusy] = useState(false);
   const [previews, setPreviews] = useState<Preview[] | null>(null);
   const links = useMemo(() => parseLinks(text), [text]);
@@ -56,7 +78,7 @@ export default function Home() {
   const effFormat = FORMATS[mode].includes(format) ? format : defaultFormatFor(mode);
 
   useEffect(() => {
-    fetch("/api/config").then((r) => r.json()).then((c: ConfigView) => { setCfg(c); setFormat(c.audioFormat); setQuality(c.videoQuality); });
+    fetch("/api/config").then((r) => r.json()).then((c: ConfigView) => { setCfg(c); setFormat(c.audioFormat); setQuality(c.videoQuality); setCodec(c.videoCodec); });
   }, []);
   // Refresca el conteo de archivos cuando cambia la cola
   const doneCount = jobs.filter((j) => j.state === "done").length;
@@ -70,7 +92,7 @@ export default function Home() {
   const download = async () => {
     if (!links.length) return toast({ kind: "err", title: "Pega al menos un link válido" });
     sfx.pop(); setBusy(true);
-    const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: links.map((l) => l.url), mode, format: effFormat, quality }) });
+    const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: links.map((l) => l.url), mode, format: effFormat, quality, codec, delayMin: delay }) });
     const d = await r.json(); setBusy(false);
     if (!r.ok) return toast({ kind: "err", title: "No se pudo encolar", body: d.error });
     const skipped = d.added.filter((j: { state: string }) => j.state === "skipped").length;
@@ -78,9 +100,13 @@ export default function Home() {
     toast({ kind: rej.length && !d.added.length ? "err" : "info", title: `${d.added.length - skipped} en cola`, body: [
       skipped ? `${skipped} ya estaban descargados (dedup)` : "",
       rej.length ? `Rechazado: ${rej.join(" · ")}` : "",
+      delay > 0
+        ? `Programado para las ${new Date(Date.now() + delay * 60_000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        : "",
+      cfg?.quietEnabled ? `Ventana silenciosa ${cfg.quietFrom}–${cfg.quietTo}: fuera de ella espera` : "",
       "La isla te avisa al terminar",
     ].filter(Boolean).join(" — ") });
-    setText(""); setPreviews(null);
+    setText(""); setPreviews(null); setDelay(0);
   };
 
   // Tope de seguridad (por encima de esto ni la UI ni el sitio aguantan).
@@ -101,7 +127,7 @@ export default function Home() {
       while (cola.length) {
         const l = cola.shift();
         if (!l) break;
-        await fetch("/api/probe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: l.url, mode }) })
+        await fetch("/api/probe", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ url: l.url, mode }) })
           .then((r) => r.json())
           .catch(() => ({ url: l.url, error: "Sin respuesta" }))
           .then((d) => setPreviews((prev) => prev?.map((x) => (x.url === l.url ? { ...x, ...d, url: l.url } : x)) ?? prev));
@@ -179,19 +205,50 @@ export default function Home() {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="muted text-xs">Calidad</span>
             {QUALITIES.map((q) => (
-              <button key={q} onClick={() => { sfx.tick(); setQuality(q); }} className={`btn sq-pill px-3 py-1 text-xs mono ${quality === q ? "bg-[var(--fill-2)]" : "btn-glass muted"}`}>{q === "best" ? "máx" : q === "4320" ? "8K" : q === "2160" ? "4K" : q + "p"}</button>
+              <button key={q} onClick={() => { sfx.tick(); setQuality(q); }} className={`btn sq-pill px-3 py-1 text-xs mono ${quality === q ? "bg-[var(--fill-2)]" : "btn-glass muted"}`} title={q === "best" ? "la mejor disponible" : `${q}p`}>{q === "best" ? "máx" : q === "4320" ? "8K" : q === "2160" ? "4K" : q + "p"}</button>
+            ))}
+          </div>
+        )}
+        {/* Códec: el contenedor es la caja, esto es lo de dentro */}
+        {["video", "profile", "all", "photo_video"].includes(mode) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="muted text-xs">Códec</span>
+            {CODECS.map((c) => (
+              <button key={c.id} onClick={() => { sfx.tick(); setCodec(c.id); }} title={c.title} className={`btn sq-pill px-3 py-1 text-xs mono ${codec === c.id ? "bg-[var(--fill-2)]" : "btn-glass muted"}`}>{c.label}</button>
             ))}
           </div>
         )}
 
+        {/* Programador: cuándo arranca lo que encolás ahora */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="muted flex items-center gap-1 text-xs"><Clock size={13} strokeWidth={1.5} />Empezar</span>
+          {DELAYS.map((d) => (
+            <button key={d.min} onClick={() => { sfx.tick(); setDelay(d.min); }} aria-pressed={delay === d.min}
+              className={`btn sq-pill px-3 py-1 text-xs mono ${delay === d.min ? "bg-[var(--fill-2)]" : "btn-glass muted"}`}
+              title={d.min ? `espera ${d.label} antes de arrancar (la cola queda guardada)` : "arranca en cuanto haya hueco"}>{d.label}</button>
+          ))}
+          {cfg?.quietEnabled && (
+            <span className="mono sq-pill flex items-center gap-1 bg-indigo-400/15 px-2.5 py-1 text-[11px] text-indigo-200"
+              title="En Ajustes activaste una ventana silenciosa: la cola solo arranca dentro de ese horario">
+              <Moon size={12} strokeWidth={1.75} />{cfg.quietFrom}–{cfg.quietTo}
+            </span>
+          )}
+        </div>
+
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button onClick={download} disabled={busy || !links.length} className="btn btn-primary h-12 px-6 sq-pill">{busy ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} strokeWidth={1.75} className="ico" />}Descargar</button>
           <button onClick={preview} disabled={!links.length} className="btn btn-glass h-12 px-5 sq-pill"><Eye size={18} strokeWidth={1.5} className="ico" />Vista previa</button>
-          <button onClick={() => { sfx.pop(); fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); }} className="btn btn-glass h-12 px-5 sq-pill"><FolderOpen size={18} strokeWidth={1.5} className="ico" />Abrir carpeta</button>
+          <button onClick={() => { sfx.pop(); fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: "{}" }); }} className="btn btn-glass h-12 px-5 sq-pill"><FolderOpen size={18} strokeWidth={1.5} className="ico" />Abrir carpeta</button>
           <span className="muted ml-auto text-xs">⌘/Ctrl + Enter</span>
         </div>
         <p className="muted mt-4 text-xs">
           <span className="font-semibold text-[var(--fg)]"><Odometer value={status.files} /></span> archivo(s) en tu carpeta actual · cero subidas a internet: todo se procesa en esta máquina
+          {status.freeLabel && (
+            <span className="mono block pt-1 opacity-70">
+              espacio libre: {status.freeLabel}
+              {status.freeBytes != null && status.freeBytes < 5 * 1024 ** 3 && <span className="ml-2 text-[var(--danger-ink)]">· ojo, se está llenando</span>}
+            </span>
+          )}
           {status.outputDir && <span className="mono block truncate pt-1 opacity-70">{status.outputDir}</span>}
         </p>
       </Panel>
@@ -215,6 +272,7 @@ export default function Home() {
                   <span className="mono sq-pill flex items-center gap-1.5 bg-[var(--fill-2)] px-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }} />{p.platform}</span>
                   <span className="mono sq-pill bg-fuchsia-500/20 px-2 py-0.5">motor: {p.engine}</span>
                   {p.entries ? <span className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{p.entries} elementos</span> : null}
+                  {p.size ? <span className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5" title="tamaño aproximado">{fmtBytes(p.size)}</span> : null}
                   {p.heights?.slice(0, 5).map((h) => <span key={h} className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{h}p</span>)}
                 </div>
                 {(p.error || p.note) && <p className={`mt-2 text-xs ${p.error ? "text-[var(--danger-ink)]" : "muted"}`}>{p.error ?? p.note}</p>}
@@ -283,7 +341,7 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
     <Panel className="p-4 sm:p-6">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight">Cola</h2>
-        <button onClick={() => { sfx.pop(); fetch("/api/jobs", { method: "DELETE" }); }} className="btn btn-glass sq-pill px-3 py-1.5 text-xs"><Trash2 size={14} strokeWidth={1.5} />Limpiar terminados</button>
+        <button onClick={() => { sfx.pop(); fetch("/api/jobs", { method: "DELETE", headers: { "x-linyue": "1" } }); }} className="btn btn-glass sq-pill px-3 py-1.5 text-xs"><Trash2 size={14} strokeWidth={1.5} />Limpiar terminados</button>
       </div>
       <ul className="space-y-2" onPointerMove={onMove} onPointerUp={onUp}>
         {jobs.map((j, i) => {
@@ -295,7 +353,7 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
               <Ring value={j.state === "done" ? 100 : j.percent} speed={j.state === "running" ? j.speed : 0} color={j.state === "error" ? "#fb7185" : j.state === "done" ? "#34d399" : "#d946ef"} size={40}>{j.state === "done" ? "✓" : `${Math.round(j.percent)}`}</Ring>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{j.title}</div>
-                <div className="mono muted truncate text-[11px]">{j.label} · {j.engine} · {j.format.toUpperCase()} · {label[j.state]}{j.state === "running" && ` · ${fmtBytes(j.speed)}/s · ETA ${j.eta || "—"}`}{j.error && ` · ${j.error}`}</div>
+                <div className="mono muted truncate text-[11px]">{j.label} · {j.engine} · {j.format.toUpperCase()} · {label[j.state]}{j.state === "running" && ` · ${fmtBytes(j.speed)}/s · ETA ${j.eta || "—"}`}{j.state === "queued" && j.startAt && ` · empieza a las ${new Date(j.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}{j.error && ` · ${j.error}`}</div>
               </div>
               {["running", "probing", "queued"].includes(j.state) && <button aria-label="Pausar" onClick={() => jobAction(j.id, "pause")} className="btn btn-glass h-9 w-9 sq-pill"><Pause size={15} /></button>}
               {j.state === "paused" && <button aria-label="Reanudar" onClick={() => jobAction(j.id, "resume")} className="btn btn-glass h-9 w-9 sq-pill"><Play size={15} /></button>}

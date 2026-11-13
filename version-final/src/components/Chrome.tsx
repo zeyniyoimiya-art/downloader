@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock, Cookie, Download, Moon, Pause, Play, Settings, Sun, Volume2, VolumeX, X, AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Cookie, Download, Info, Moon, Pause, Play, Settings, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { useApp } from "./AppProvider";
 import { Logo, Ring, Segmented } from "./ui";
 import { fmtBytes } from "@/lib/shared/progress";
@@ -11,6 +11,7 @@ import { fmtBytes } from "@/lib/shared/progress";
 const TABS = [
   { href: "/", label: "Descargador", icon: Download },
   { href: "/recientes", label: "Recientes", icon: Clock },
+  { href: "/estadisticas", label: "Datos", icon: BarChart3 },
   { href: "/cookies", label: "Cookies", icon: Cookie },
   { href: "/ajustes", label: "Ajustes", icon: Settings },
 ];

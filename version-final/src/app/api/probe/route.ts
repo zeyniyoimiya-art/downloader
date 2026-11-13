@@ -1,4 +1,5 @@
 // Vista previa por link: yt-dlp --dump-json (título, duración, miniatura, resoluciones, motor)
+import { guard, blocked } from "@/lib/server/guard";
 import { z } from "zod";
 import fs from "node:fs";
 import { detect, modeParts, primaryMode, routeEngine, supportedModes } from "@/lib/shared/platforms";
@@ -8,9 +9,19 @@ import { runCapture } from "@/lib/server/jobs";
 import { cookieFile, getConfig } from "@/lib/server/store";
 export const dynamic = "force-dynamic";
 
+// ── Control de sondas ────────────────────────────────────────────────────────
+// Cada sonda lanza un yt-dlp completo (y con bgutil, además un proceso de Node
+// por sonda). Pegar 40 links de golpe encolaba 40 yt-dlp a la vez: en Windows
+// eso agota handles (EMFILE) y el sondeo de TODOS acaba en timeout. Se procesan
+// como máximo `probeConcurrency` a la vez y las repetidas del mismo link se
+// reaprovechan en vez de relanzar el proceso.
+let activas = 0;
+const enVuelo = new Map<string, Promise<unknown>>();
+
 const Body = z.object({ url: z.string().max(2048), mode: z.enum(["audio", "video", "photo", "profile", "all", "photo_video", "audio_photo"]) });
 
 export async function POST(req: Request) {
+  { const g = guard(req); if (!g.ok) return blocked(g); }
   const parsed = Body.safeParse(await req.json().catch(() => null));
   const d = parsed.success ? detect(parsed.data.url) : null;
   if (!parsed.success || !d) return Response.json({ error: "Link inválido" }, { status: 400 });
@@ -75,6 +86,10 @@ export async function POST(req: Request) {
       note: `Perfil de Instagram: se bajará con ${motores.join(" + ")} (hasta ${cfg.profileLimit} publicaciones). La vista previa no está disponible para perfiles.`,
     });
   }
+  // Reaprovechar sondas idénticas en vuelo
+  const ya = enVuelo.get(d.url);
+  if (ya) return Response.json(await ya);
+
   // Sondamos SIEMPRE que el binario exista, sin fiarnos del flag de salud.
   // `isHealthy` sale de un escaneo cacheado que puede haberse quedado corto por
   // contención de disco/CPU (varios binarios de 40-95 MB arrancando a la vez);
@@ -82,6 +97,11 @@ export async function POST(req: Request) {
   if (!resolveEngine("yt-dlp")) {
     return Response.json({ ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: "yt-dlp no encontrado: no se puede previsualizar" });
   }
+  if (activas >= cfg.probeConcurrency) {
+    return Response.json({ ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: "Demasiadas vistas previas a la vez; se reintentará al bajar la cola" });
+  }
+  activas++;
+  const tarea = (async () => {
   try {
     const args = ["--dump-single-json", "--no-playlist", "--skip-download", "--flat-playlist"];
     args.push(...browserUAFor(d.url)); // Bilibili WAF: sin UA de navegador no devuelve formatos
@@ -93,16 +113,26 @@ export async function POST(req: Request) {
     // fichas se quedaban en "timeout" y nunca se rellenaban.
     const j = JSON.parse(await runCapture("yt-dlp", [...args, "--", d.url], 90000));
     const heights = [...new Set(((j.formats ?? []) as { height?: number }[]).map((f) => f.height).filter((h): h is number => !!h))].sort((a, b) => b - a);
+    // Tamaño aproximado: sirve para avisar "esto son 2,1 GB" antes de descargar
+    // (y para que el planificador compruebe el disco).
+    const fs2 = ((j.formats ?? []) as { filesize?: number; filesize_approx?: number; vcodec?: string }[]);
+    const tam = (f?: { filesize?: number; filesize_approx?: number }) => f?.filesize ?? f?.filesize_approx ?? 0;
+    const mayor = fs2.filter((f) => f.vcodec && f.vcodec !== "none").sort((a, b) => tam(b) - tam(a))[0];
+    const size = Number(j.filesize_approx ?? tam(mayor) ?? 0) || undefined;
     const note = motores.join(" + ") !== "yt-dlp" ? `Se descargará con ${motores.join(" + ")}` : undefined;
     const fecha = typeof j.upload_date === "string" && j.upload_date.length === 8
       ? `${j.upload_date.slice(6, 8)}/${j.upload_date.slice(4, 6)}/${j.upload_date.slice(0, 4)}`
       : undefined;
     const views = typeof j.view_count === "number" ? j.view_count : undefined;
-    return Response.json({ ...base, title: j.title || d.url, author: j.uploader || j.channel || "", duration: j.duration || 0, thumbnail: j.thumbnail || "", heights, entries: j.entries?.length, date: fecha, views, note });
+    return Response.json({ ...base, title: j.title || d.url, author: j.uploader || j.channel || "", duration: j.duration || 0, thumbnail: j.thumbnail || "", heights, size, entries: j.entries?.length, date: fecha, views, note });
   } catch (e) {
     // Devolvemos el motivo REAL en vez de un mensaje genérico: así se ve si fue
     // por cookies, por un link privado o porque el sitio cambió.
     const motivo = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").trim().slice(0, 180);
     return Response.json({ ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: `Se usará ${motores.join(" + ")}; sin vista previa${motivo ? ` — ${motivo}` : ""}` });
   }
+  })();
+  enVuelo.set(d.url, tarea);
+  try { return Response.json(await tarea); }
+  finally { activas--; enVuelo.delete(d.url); }
 }
