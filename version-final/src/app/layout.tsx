@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/components/AppProvider";
 import { Ambient } from "@/components/Ambient";
@@ -15,9 +16,26 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { themeColor: "#07060c", width: "device-width", initialScale: 1 };
 
+/**
+ * TIPOGRAFÍA REAL.
+ *
+ * `globals.css` declaraba `--font-sans: "Inter var", "Inter", …` pero Inter
+ * NUNCA se cargaba (ni `next/font`, ni `@font-face`, ni un <link>): en Windows
+ * todo se veía en Segoe UI y en Linux en DejaVu. El tracking negativo del CSS
+ * (-0.011em, y -0.035em en el hero) está afinado para Inter, así que el diseño
+ * se veía distinto en cada máquina.
+ *
+ * `next/font` descarga las fuentes UNA vez en la compilación, las sirve desde
+ * el propio dominio (sin peticiones a Google en tiempo de ejecución) y evita el
+ * cambio de fuente al cargar. Si compilas sin internet, Next lo cachea en
+ * `.next/cache` después de la primera vez.
+ */
+const sans = Inter({ subsets: ["latin"], display: "swap", variable: "--font-sans-loaded" });
+const mono = JetBrains_Mono({ subsets: ["latin"], display: "swap", variable: "--font-mono-loaded" });
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
       <body>
         <AppProvider>
           <Ambient />

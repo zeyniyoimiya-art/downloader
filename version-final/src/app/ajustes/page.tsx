@@ -11,7 +11,7 @@ import { AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platfo
 import type { ReactNode } from "react";
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-3.5 last:border-0">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] py-3.5 last:border-0">
       <div><div className="text-sm font-medium">{label}</div>{hint && <div className="muted text-xs">{hint}</div>}</div>
       <div className="flex items-center gap-2">{children}</div>
     </div>
@@ -37,7 +37,7 @@ export default function Ajustes() {
   const doScan = async () => { sfx.pop(); setScanning(true); await rescan(); setScanning(false); };
   const ok = engines.filter((e) => e.health === "ok").length;
 
-  const input = "mono scrim border border-white/10 px-3 py-2 text-xs outline-none sq-pill";
+  const input = "mono scrim border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill";
 
   return (
     <div className="space-y-6">
@@ -90,12 +90,12 @@ export default function Ajustes() {
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {engines.map((e, i) => (
-            <div key={e.id} className="scrim rise flex items-center gap-3 border border-white/5 p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
+            <div key={e.id} className="scrim rise flex items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.health === "ok" ? "bg-emerald-400" : e.health === "warn" ? "bg-amber-400" : "bg-rose-500"}`} style={{ boxShadow: `0 0 10px ${e.health === "ok" ? "#34d399" : e.health === "warn" ? "#fbbf24" : "#f43f5e"}` }} />
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2"><span className="mono text-sm">{e.exe}</span>{e.optional && <span className="muted text-[10px]">opcional</span>}</div>
+                <div className="flex items-baseline gap-2"><span className="mono text-sm">{e.exe}</span>{e.optional && <span className="muted text-[11px]">opcional</span>}</div>
                 <div className="muted truncate text-[11px]">{e.role}</div>
-                <input className="mono mt-1 w-full bg-transparent text-[10px] opacity-60 outline-none focus:opacity-100" placeholder={e.path ?? "ruta personalizada…"} value={cfg.enginePaths[e.id] ?? ""} onChange={(ev) => set("enginePaths", { ...cfg.enginePaths, [e.id]: ev.target.value })} aria-label={`Ruta de ${e.exe}`} />
+                <input className="mono mt-1 w-full bg-transparent text-[11px] opacity-60 outline-none focus:opacity-100" placeholder={e.path ?? "ruta personalizada…"} value={cfg.enginePaths[e.id] ?? ""} onChange={(ev) => set("enginePaths", { ...cfg.enginePaths, [e.id]: ev.target.value })} aria-label={`Ruta de ${e.exe}`} />
               </div>
               <span className="mono shrink-0 text-[11px]">{e.version ?? e.note}</span>
             </div>
@@ -109,7 +109,7 @@ export default function Ajustes() {
         <div className="flex-1"><div className="font-semibold">Linyue Studio</div><div className="muted text-xs">Descargador universal local · sin nube, sin telemetría (Sentry y Plausible OFF)</div></div>
         <div className="text-right">
           <div className="text-xs muted">hecho por</div>
-          <div className="text-sm font-medium">Lin Yue <span className="inline-block rotate-[-6deg] border border-rose-400/60 px-1 text-rose-300" style={{ fontFamily: "serif" }}>林玥</span></div>
+          <div className="text-sm font-medium">Lin Yue <span className="inline-block rotate-[-6deg] border border-rose-400/60 px-1 text-[var(--danger-ink)]" style={{ fontFamily: "serif" }}>林玥</span></div>
         </div>
       </Panel>
     </div>

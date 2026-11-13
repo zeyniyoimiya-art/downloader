@@ -14,7 +14,10 @@ export async function GET(req: Request) {
       const onEvent = (e: { type: string; data: unknown }) => send(e.type, e.data);
       bus.on("jobs", onJobs);
       bus.on("event", onEvent);
-      const ping = setInterval(() => ctrl.enqueue(enc.encode(`: ping\n\n`)), 15000);
+      // El latido va protegido: si el cliente cerró la pestaña entre el abort y
+      // el clearInterval, `enqueue` lanza dentro del timer y eso es una
+      // excepción NO capturada que tumba el manejador de la ruta.
+      const ping = setInterval(() => { try { ctrl.enqueue(enc.encode(`: ping\n\n`)); } catch { clearInterval(ping); } }, 15000);
       send("jobs", listJobs());
       cleanup = () => { clearInterval(ping); bus.off("jobs", onJobs); bus.off("event", onEvent); };
       req.signal.addEventListener("abort", () => { cleanup(); try { ctrl.close(); } catch {} });

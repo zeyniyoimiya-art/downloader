@@ -6,37 +6,54 @@
   --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.1 28%, 1.078 30.3%, 0.999 38.2%, 0.981 41.7%, 0.973 45.5%, 0.98 52.5%, 1.001 66.1%, 1.002 77%, 1);
   --spring-soft: linear(0, 0.06 3%, 0.24 7%, 0.6 15%, 0.86 23%, 0.99 31%, 1.03 38%, 1.04 45%, 1.01 62%, 1);
   --dur: 620ms;
-  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --font-sans: var(--font-sans-loaded, "Inter"), "Inter var", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "JetBrains Mono"), ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 
   /* Dark obsidiana (por defecto) */
   --bg: #07060c;
   --fg: #f5f3ff;
-  --muted: rgba(235, 230, 255, 0.62);
+  --muted: rgba(235, 230, 255, 0.68);
   --glass: rgba(28, 24, 44, 0.42);
   --glass-strong: rgba(22, 18, 36, 0.68);
   --stroke: rgba(255, 255, 255, 0.14);
   --spec: rgba(255, 255, 255, 0.18);
   --scrim: rgba(6, 5, 12, 0.25);
+  /* Superficies internas: antes eran `border-white/10`, `bg-white/5`…
+     incrustados en los componentes, y en modo claro desaparecían. */
+  --line: rgba(255, 255, 255, 0.10);
+  --fill: rgba(255, 255, 255, 0.05);
+  --fill-2: rgba(255, 255, 255, 0.11);
+  /** Acento para texto pequeño: el fucsia 300 sobre fondo claro no se lee. */
+  --accent-ink: #f0abfc;
+  /* Estados: `text-emerald-200` / `text-rose-300` funcionan en oscuro, pero en
+     modo claro quedan casi blancos sobre un tinte claro. */
+  --ok-ink: #6ee7b7;
+  --danger-ink: #fda4af;
   --shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 20px 50px -20px rgba(0,0,0,.7), 0 8px 18px -10px rgba(0,0,0,.5);
   color-scheme: dark;
 }
 :root.light {
-  --bg: #f3f1fb;
-  --fg: #16121f;
-  --muted: rgba(30, 22, 50, 0.62);
-  --glass: rgba(255, 255, 255, 0.5);
-  --glass-strong: rgba(255, 255, 255, 0.72);
-  --stroke: rgba(255, 255, 255, 0.75);
-  --spec: rgba(255, 255, 255, 0.7);
-  --scrim: rgba(255, 255, 255, 0.2);
+  --bg: #f4f2fb;
+  --fg: #14101d;
+  --muted: rgba(28, 20, 48, 0.70);
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.84);
+  /* Antes era blanco al 75%: bordes blancos sobre fondo claro = invisibles,
+     y todo el vidrio se veía "sin definir". Un gris violáceo los devuelve. */
+  --stroke: rgba(28, 20, 48, 0.10);
+  --spec: rgba(255, 255, 255, 0.9);
+  --scrim: rgba(255, 255, 255, 0.35);
+  --line: rgba(28, 20, 48, 0.12);
+  --fill: rgba(28, 20, 48, 0.05);
+  --fill-2: rgba(28, 20, 48, 0.10);
+  --accent-ink: #a21caf;
   --shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 20px 50px -24px rgba(60,30,120,.35), 0 6px 16px -10px rgba(60,30,120,.25);
   color-scheme: light;
 }
 
 @theme {
-  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --font-sans: var(--font-sans-loaded, "Inter"), -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "JetBrains Mono"), ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 html, body { background: var(--bg); color: var(--fg); }
@@ -89,16 +106,21 @@ body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smo
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
   font-weight: 600; letter-spacing: -0.01em; cursor: pointer; user-select: none;
+  /* Sin `will-change`: lo tenían TODOS los botones a la vez, creando una capa
+     de composición por botón (decenas en la home) para una animación que dura
+     90 ms al pulsar. */
   transition: transform var(--dur) var(--spring), background-color .3s, box-shadow .3s, opacity .2s;
-  will-change: transform;
 }
 .btn:hover { transform: translateY(-1px) scale(1.02); }
 .btn:active { transform: scale(0.96); transition-duration: 90ms; transition-timing-function: ease-out; }
 .btn:disabled { opacity: .45; pointer-events: none; }
 .btn-primary {
   color: white;
-  background: linear-gradient(135deg, #8b5cf6, #d946ef 55%, #ec4899);
-  box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 10px 30px -10px rgba(217,70,239,.7);
+  /* Un tono más profundo que antes (#8b5cf6→#d946ef→#ec4899): con el degradado
+     anterior, el blanco sobre #ec4899 daba ~3.4:1 y el texto del botón no
+     llegaba al mínimo AA (4.5:1). Ahora queda en ~4.6:1 sin perder el fucsia. */
+  background: linear-gradient(135deg, #7c3aed, #c026d3 55%, #db2777);
+  box-shadow: 0 1px 0 rgba(255,255,255,.32) inset, 0 10px 30px -10px rgba(192,38,211,.65);
 }
 .btn-glass { background: color-mix(in oklab, var(--glass-strong) 80%, transparent); border: 1px solid var(--stroke); backdrop-filter: blur(20px) saturate(160%); }
 .btn-glass:hover { background: color-mix(in oklab, var(--glass-strong) 100%, white 6%); }
@@ -148,6 +170,26 @@ body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smo
   transition: width .4s var(--spring), height .4s var(--spring), opacity .3s; }
 .lens.big { width: 56px; height: 56px; }
 @media (pointer: coarse) { .lens { display: none; } }
+
+/* Texto con degradado de acento, legible en LOS DOS temas
+   (antes estaba en clases `from-violet-300 via-fuchsia-300 to-pink-300`,
+   que sobre fondo claro se quedaban casi blancas) */
+.grad-text {
+  background: linear-gradient(90deg, #c4b5fd, #f5d0fe 45%, #fbcfe8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+:root.light .grad-text {
+  background: linear-gradient(90deg, #6d28d9, #a21caf 45%, #be185d);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Accesibilidad: contraste reforzado a petición del sistema */
+@media (prefers-contrast: more) {
+  :root { --muted: rgba(240, 236, 255, .88); --stroke: rgba(255,255,255,.38); --line: rgba(255,255,255,.32); --spec: rgba(255,255,255,.3); }
+  :root.light { --muted: rgba(18, 12, 32, .9); --stroke: rgba(18,12,32,.38); --line: rgba(18,12,32,.32); }
+  .glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .lens { display: none; }
+}
 
 /* ───────── Reduced motion: vidrio estático, sin springs ───────── */
 @media (prefers-reduced-motion: reduce) {

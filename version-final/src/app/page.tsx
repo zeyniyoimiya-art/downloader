@@ -1,4 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element --
+   Las carátulas vienen de decenas de dominios (YouTube, TikTok, X, Bilibili…). Con <Image> habría que abrir `remotePatterns` a '**', que es exactamente lo que la regla evita. Se compensa con loading=lazy, decoding=async y un contenedor aspect-video (sin CLS).
+*/
 // "/" Descargador: hero, textarea multi-link con chips por línea, modos, formatos (FLIP), vista previa y cola viva.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Download, Eye, FolderOpen, Music2, Film, Images, UserSquare2, GripVertical, RotateCcw, X, Pause, Play, Trash2, Sparkles, Loader2 } from "lucide-react";
@@ -124,9 +127,9 @@ export default function Home() {
     <div className="space-y-8">
       {/* Hero */}
       <section className="rise pt-8 text-center">
-        <p className="mono text-[11px] font-medium tracking-[.25em] text-fuchsia-300/90">DESCARGADOR UNIVERSAL · LOCAL</p>
+        <p className="mono text-[11px] font-medium tracking-[.25em] text-[var(--accent-ink)]">DESCARGADOR UNIVERSAL · LOCAL</p>
         <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-bold tracking-[-0.035em] sm:text-6xl" style={{ textWrap: "balance" }}>
-          Baja lo que quieras, <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-transparent">con ficha completa.</span>
+          Baja lo que quieras, <span className="grad-text">con ficha completa.</span>
         </h1>
         <p className="muted mx-auto mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
           Audio, video, fotos y perfiles enteros desde YouTube, TikTok, X, Instagram, Spotify y cientos de sitios más. Autor, fecha, fuente y carátula se incrustan solos; el sistema convierte a MP3, FLAC, WAV, OPUS, MP4, MKV o WEBP cuando lo pidas.
@@ -141,16 +144,16 @@ export default function Home() {
             value={text} onChange={(e) => setText(e.target.value)} rows={5} spellCheck={false}
             placeholder={"Pega uno o varios links (uno por línea)…\nhttps://youtu.be/…\nhttps://open.spotify.com/track/…"}
             aria-label="Links a descargar"
-            className="mono scrim w-full resize-y p-4 text-sm leading-7 outline-none placeholder:opacity-50 sq-sm border border-white/10"
+            className="mono scrim w-full resize-y p-4 text-sm leading-7 outline-none placeholder:opacity-50 sq-sm border border-[var(--line)]"
           />
         </div>
         {/* Chips de plataforma: cada uno "aterriza" con spring */}
         <div className="mt-3 flex min-h-8 flex-wrap items-center gap-2">
           <span className="glass sq-pill px-3 py-1 text-xs font-semibold"><Odometer value={links.length} /> detectados</span>
           {links.map((l, i) => (
-            <span key={l.url} className="land sq-pill flex items-center gap-1.5 border border-white/10 bg-white/5 px-2.5 py-1 text-xs" style={{ animationDelay: `${i * 50}ms` }} title={l.url}>
+            <span key={l.url} className="land sq-pill flex items-center gap-1.5 border border-[var(--line)] bg-[var(--fill)] px-2.5 py-1 text-xs" style={{ animationDelay: `${i * 50}ms` }} title={l.url}>
               <span className="h-2 w-2 rounded-full" style={{ background: l.color, boxShadow: `0 0 10px ${l.color}` }} />{l.label}
-              <span className="mono muted text-[10px]">→ {routeEngine(l, mode, { altEngineCN: cfg?.altEngineCN })}</span>
+              <span className="mono muted text-[11px]">→ {routeEngine(l, mode, { altEngineCN: cfg?.altEngineCN })}</span>
             </span>
           ))}
         </div>
@@ -164,7 +167,7 @@ export default function Home() {
                 className={`btn glass sq-sm flex-col items-start p-4 text-left ${mode === m.id ? "ring-1 ring-fuchsia-300/60" : "opacity-80"}`}
                 style={{ justifyContent: "flex-start" }}>
                 <span className={`grid h-10 w-10 place-items-center bg-gradient-to-br ${m.grad} sq-sm`}><m.icon size={20} strokeWidth={1.5} className="ico" /></span>
-                <span className="mt-3 flex items-center gap-1.5 text-sm font-semibold">{m.title}{m.id === rec && <span className="mono sq-pill bg-emerald-400/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-200">TOP</span>}</span>
+                <span className="mt-3 flex items-center gap-1.5 text-sm font-semibold">{m.title}{m.id === rec && <span className="mono sq-pill bg-emerald-400/20 px-1.5 py-0.5 text-[11px] font-bold text-[var(--ok-ink)]">TOP</span>}</span>
                 <span className="muted text-[11px] font-normal">{m.desc}</span>
               </button>
             ))}
@@ -176,7 +179,7 @@ export default function Home() {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="muted text-xs">Calidad</span>
             {QUALITIES.map((q) => (
-              <button key={q} onClick={() => { sfx.tick(); setQuality(q); }} className={`btn sq-pill px-3 py-1 text-xs mono ${quality === q ? "bg-white/20" : "btn-glass muted"}`}>{q === "best" ? "máx" : q === "4320" ? "8K" : q === "2160" ? "4K" : q + "p"}</button>
+              <button key={q} onClick={() => { sfx.tick(); setQuality(q); }} className={`btn sq-pill px-3 py-1 text-xs mono ${quality === q ? "bg-[var(--fill-2)]" : "btn-glass muted"}`}>{q === "best" ? "máx" : q === "4320" ? "8K" : q === "2160" ? "4K" : q + "p"}</button>
             ))}
           </div>
         )}
@@ -201,20 +204,20 @@ export default function Home() {
               <div className="relative aspect-video bg-black/30" style={{ animationDelay: `${i * 60}ms` }}>
                 {/* Placeholder debajo: si la portada no carga (onError) se ve él, no un icono roto */}
                 <div className={`absolute inset-0 grid place-items-center ${p.title || p.error ? "" : "skeleton"}`}><Sparkles className="opacity-30" /></div>
-                {p.thumbnail && <img src={p.thumbnail} alt="" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
+                {p.thumbnail && <img src={p.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
                 {!!p.duration && <span className="mono absolute bottom-2 right-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] text-white">{fmtDuration(p.duration)}</span>}
                 {p.date && <span className="mono absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] text-white">{p.date}</span>}
               </div>
               <div className="p-4">
                 <div className="line-clamp-2 text-sm font-semibold">{p.title ?? (p.error ? p.url : "Inspeccionando…")}</div>
                 <div className="muted mt-1 truncate text-xs">{[p.author, p.views != null ? fmtViews(p.views) : ""].filter(Boolean).join(" · ")}</div>
-                <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
-                  <span className="mono sq-pill flex items-center gap-1.5 bg-white/10 px-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }} />{p.platform}</span>
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="mono sq-pill flex items-center gap-1.5 bg-[var(--fill-2)] px-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }} />{p.platform}</span>
                   <span className="mono sq-pill bg-fuchsia-500/20 px-2 py-0.5">motor: {p.engine}</span>
-                  {p.entries ? <span className="mono sq-pill bg-white/10 px-2 py-0.5">{p.entries} elementos</span> : null}
-                  {p.heights?.slice(0, 5).map((h) => <span key={h} className="mono sq-pill bg-white/10 px-2 py-0.5">{h}p</span>)}
+                  {p.entries ? <span className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{p.entries} elementos</span> : null}
+                  {p.heights?.slice(0, 5).map((h) => <span key={h} className="mono sq-pill bg-[var(--fill-2)] px-2 py-0.5">{h}p</span>)}
                 </div>
-                {(p.error || p.note) && <p className={`mt-2 text-xs ${p.error ? "text-rose-300" : "muted"}`}>{p.error ?? p.note}</p>}
+                {(p.error || p.note) && <p className={`mt-2 text-xs ${p.error ? "text-[var(--danger-ink)]" : "muted"}`}>{p.error ?? p.note}</p>}
               </div>
             </Panel>
           ))}
@@ -255,12 +258,26 @@ function FormatChips({ formats, value, onChange }: { formats: readonly string[];
 
 // Cola viva con drag-reorder (pointer events, inercia y snap)
 function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; jobAction: ReturnType<typeof useApp>["jobAction"] }) {
-  const [drag, setDrag] = useState<{ id: string; y: number; start: number; idx: number } | null>(null);
+  // `h` = alto REAL de la fila medida en el pointerdown. Antes había un
+  // `const ROW = 76` fijo: en móvil el título ocupa dos líneas, la fila mide
+  // ~96 px y arrastrar una posición saltaba dos. Ahora el cálculo usa la
+  // geometría real (+8 px del `space-y-2`).
+  const [drag, setDrag] = useState<{ id: string; y: number; start: number; idx: number; h: number } | null>(null);
   if (!jobs.length) return null;
-  const ROW = 76;
-  const onDown = (e: React.PointerEvent, id: string, idx: number) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); setDrag({ id, y: 0, start: e.clientY, idx }); sfx.tick(); };
+  const onDown = (e: React.PointerEvent, id: string, idx: number) => {
+    const li = (e.currentTarget as HTMLElement).closest("li") as HTMLElement | null;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDrag({ id, y: 0, start: e.clientY, idx, h: li?.offsetHeight ?? 76 });
+    sfx.tick();
+  };
   const onMove = (e: React.PointerEvent) => drag && setDrag({ ...drag, y: e.clientY - drag.start });
-  const onUp = () => { if (!drag) return; const to = Math.max(0, Math.min(jobs.length - 1, drag.idx + Math.round(drag.y / ROW))); if (to !== drag.idx) void jobAction(drag.id, "move", to); setDrag(null); };
+  const onUp = () => {
+    if (!drag) return;
+    const paso = drag.h + 8;
+    const to = Math.max(0, Math.min(jobs.length - 1, drag.idx + Math.round(drag.y / paso)));
+    if (to !== drag.idx) void jobAction(drag.id, "move", to);
+    setDrag(null);
+  };
   const label: Record<string, string> = { queued: "En cola", probing: "Inspeccionando", running: "Bajando", post: "Post-proceso", paused: "Pausado", done: "Listo", error: "Error", canceled: "Cancelado", skipped: "Omitido" };
   return (
     <Panel className="p-4 sm:p-6">
@@ -272,7 +289,7 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
         {jobs.map((j, i) => {
           const dragging = drag?.id === j.id;
           return (
-            <li key={j.id} className="scrim flex items-center gap-3 border border-white/10 p-3 sq-sm"
+            <li key={j.id} className="scrim flex items-center gap-3 border border-[var(--line)] p-3 sq-sm"
               style={{ transform: dragging ? `translateY(${drag.y}px) scale(1.02)` : "none", transition: dragging ? "none" : "transform 500ms var(--spring)", zIndex: dragging ? 10 : 0, position: "relative", boxShadow: dragging ? "0 20px 40px -10px rgba(0,0,0,.5)" : undefined }}>
               <button aria-label="Reordenar" onPointerDown={(e) => onDown(e, j.id, i)} className="muted cursor-grab touch-none"><GripVertical size={16} /></button>
               <Ring value={j.state === "done" ? 100 : j.percent} speed={j.state === "running" ? j.speed : 0} color={j.state === "error" ? "#fb7185" : j.state === "done" ? "#34d399" : "#d946ef"} size={40}>{j.state === "done" ? "✓" : `${Math.round(j.percent)}`}</Ring>

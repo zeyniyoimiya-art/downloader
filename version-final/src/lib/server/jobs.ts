@@ -8,7 +8,7 @@ import { buildArgs, ffprobeArgs, magickArgs } from "../shared/args";
 import { detect, routeEngine, modeParts, supportedModes, AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS, type AtomicMode, type Detected, type EngineId, type Mode } from "../shared/platforms";
 import { parseLine } from "../shared/progress";
 import { isHealthy, MOCK, resolveEngine, scanEngines, getEngines } from "./engines";
-import { addHistory, archiveFileFor, cookieFile, getConfig, inHistory, reconcileArchiveFor, TEMP_DIR, type Config } from "./store";
+import { addHistory, archiveFileFor, cookieFile, getConfig, inHistory, newId, reconcileArchiveFor, TEMP_DIR, type Config } from "./store";
 
 export type JobState = "queued" | "probing" | "running" | "post" | "paused" | "done" | "error" | "canceled" | "skipped";
 export interface Job {
@@ -36,6 +36,8 @@ export interface Job {
   retryAt?: number;
   /** El turbo (aria2c) falló para este trabajo: reintentar sin él */
   noTurbo?: boolean;
+  /** Terminó "bien" pero sin archivos: aviso para la UI, no es un error duro */
+  warning?: string;
 }
 
 /** Metadatos que yt-dlp devuelve en el sondeo previo. */
@@ -72,8 +74,11 @@ function event(type: string, data: unknown) { bus.emit("event", { type, data });
 // Formato concreto por parte atómica: respeta el elegido si encaja en su pool;
 // si no (p. ej. en un combo el usuario dejó "mp4" y esta parte es audio), cae
 // al default de configuración. Evita jobs absurdos tipo "bajar audio en webm".
-function formatForPart(part: AtomicMode, chosen: string, cfg: Config): string {
-  const pools: Record<AtomicMode, readonly string[]> = { audio: AUDIO_FORMATS, video: VIDEO_FORMATS, photo: PHOTO_FORMATS, profile: VIDEO_FORMATS };
+export function formatForPart(part: AtomicMode, chosen: string, cfg: Config): string {
+  // «Perfil completo» puede bajarse en audio (el README lo promete: un canal o
+  // un perfil de SoundCloud en mp3). Antes su pool era solo VIDEO_FORMATS, así
+  // que elegir mp3 se degradaba en silencio a mp4.
+  const pools: Record<AtomicMode, readonly string[]> = { audio: AUDIO_FORMATS, video: VIDEO_FORMATS, photo: PHOTO_FORMATS, profile: [...AUDIO_FORMATS, ...VIDEO_FORMATS] };
   if (pools[part].includes(chosen)) return chosen;
   if (part === "audio") return cfg.audioFormat;
   if (part === "photo") return cfg.photoFormat;
@@ -100,7 +105,7 @@ export function enqueue(urls: string[], mode: Mode, format: string, quality: str
     for (const part of parts) {
       const engine = routeEngine(d, part, { altEngineCN: cfg.altEngineCN, healthy: isHealthy });
       const job: Job = {
-        id: Math.random().toString(36).slice(2, 10), url: d.url, platform: d.platform, label: d.label,
+        id: newId(), url: d.url, platform: d.platform, label: d.label,
         mode: part, format: formatForPart(part, format, cfg), quality, engine,
         state: "queued", percent: 0, speed: 0, eta: "", title: d.url, thumbnail: "", files: [], log: [], createdAt: Date.now(),
       };
@@ -154,11 +159,23 @@ function spawnEngine(id: EngineId, args: string[]): ChildProcess {
   });
 }
 
-export function runCapture(id: EngineId, args: string[], timeout = 30000): Promise<string> {
+export function runCapture(
+  id: EngineId,
+  args: string[],
+  timeout = 30000,
+  /**
+   * Se llama en cuanto el proceso existe, para que quien lo lanzó pueda
+   * REGISTRARLO (p. ej. en `mgr.procs`). Sin esto, pausar o cancelar un trabajo
+   * durante el sondeo previo (`--dump-single-json`) no mataba nada: el proceso
+   * seguía vivo y el trabajo quedaba "pausado" con un yt-dlp huérfano detrás.
+   */
+  onSpawn?: (p: ChildProcess) => void,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let out = "", err = "";
     let p: ChildProcess;
     try { p = spawnEngine(id, args); } catch (e) { return reject(e); }
+    try { onSpawn?.(p); } catch {}
     const t = setTimeout(() => { killTree(p); reject(new Error("timeout")); }, timeout);
     // StringDecoder: `chunk.toString()` parte los caracteres multibyte que caen
     // a caballo entre dos trozos y los convierte en "?".
@@ -196,7 +213,17 @@ function killTree(p: ChildProcess) {
 async function probeMeta(job: Job) {
   if (job.engine !== "yt-dlp") return;
   try {
-    const out = await runCapture("yt-dlp", ["--dump-single-json", "--no-playlist", "--skip-download", "--", job.url], 25000);
+    // Se registra el proceso de sondeo para que pausar/cancelar lo mate de
+    // verdad (antes quedaba huérfano y seguía gastando red y CPU).
+    const out = await runCapture(
+      "yt-dlp",
+      ["--dump-single-json", "--no-playlist", "--skip-download", "--", job.url],
+      25000,
+      (p) => {
+        mgr.procs.set(job.id, p);
+        p.on("close", () => { if (mgr.procs.get(job.id) === p) mgr.procs.delete(job.id); });
+      },
+    );
     const j = JSON.parse(out);
     job.title = j.title || job.title;
     job.thumbnail = j.thumbnail || "";
@@ -236,11 +263,17 @@ async function run(job: Job) {
       // Antes de lanzar: si el usuario borró el archivo, hay que quitar el id del
       // archive de ESTE modo. Si no, `--download-archive` lo salta en silencio y
       // el trabajo "termina bien" sin bajar nada.
-      if (cfg.noRepeat) reconcileArchiveFor(job.mode);
+      //
+      // OJO: reconciliar implica REESCRIBIR `archive-<modo>.txt`, mientras yt-dlp
+      // puede estar añadiéndole líneas desde otro trabajo del mismo modo vivo.
+      // Con concurrencia ≥2 eso se comía entradas y provocaba descargas
+      // duplicadas. Solo se reconcilia si no hay nadie más del mismo modo.
+      const ocupado = mgr.jobs.some((j) => j !== job && j.mode === job.mode && ["probing", "running", "post"].includes(j.state));
+      if (cfg.noRepeat && !ocupado) reconcileArchiveFor(job.mode);
       const args = buildArgs(job.engine, detect(job.url) as Detected, {
         mode: job.mode, format: job.format, quality: job.quality, outputDir: cfg.outputDir, turbo: cfg.turbo && !job.noTurbo,
 aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.embedMetadata, archiveFile: archiveFileFor(job.mode), profileLimit: cfg.profileLimit,
-        cookies: fs.existsSync(ck) ? ck : null, ffmpegDir: ff ? path.dirname(ff) : null,
+        cookies: fs.existsSync(ck) ? ck : null, ffmpegDir: ff ? path.dirname(ff) : null, ffmpegPath: ff,
         tempDir: TEMP_DIR,
       });
       job.state = "running"; emit();
@@ -272,18 +305,38 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         p.on("close", (code) => {
           mgr.procs.delete(job.id);
           if (job.state !== "running") return resolve(); // pausado/cancelado
-          code === 0 ? resolve() : reject(new Error(job.log.filter((l) => /error/i.test(l)).pop() || `El motor terminó con código ${code}`));
+          if (code === 0) {
+            // `--ignore-errors` hace que yt-dlp salga con código 0 aunque TODO
+            // haya fallado. Sin esta comprobación el trabajo se marcaba "listo"
+            // sin haber bajado ni un archivo (el usuario veía el toast verde y
+            // no encontraba nada). Si hay una línea ERROR y no hay archivos,
+            // el trabajo falló de verdad.
+            const errLine = [...job.log].reverse().find((l) => /^\s*ERROR:/i.test(l));
+            if (errLine && !job.files.length) return reject(new Error(errLine.replace(/^\s*ERROR:\s*/i, "").slice(0, 300)));
+            return resolve();
+          }
+          reject(new Error(job.log.filter((l) => /error/i.test(l)).pop() || `El motor terminó con código ${code}`));
         });
       });
       if (job.state !== "running") return;
       // Post-proceso: conversión de fotos con Magick
       job.state = "post"; job.percent = 100; emit();
       if (job.mode === "photo" && cfg.photoFormat !== "original" && isHealthy("magick")) {
+        const convertidos: string[] = [];
         for (const f of [...job.files]) {
           if (/\.(png|jpe?g|webp|gif|bmp|heic)$/i.test(f) && !f.toLowerCase().endsWith("." + cfg.photoFormat)) {
-            try { await runCapture("magick", magickArgs(f, cfg.photoFormat as "webp" | "jpg"), 60000); } catch {}
+            try {
+              const argv = magickArgs(f, cfg.photoFormat as "webp" | "jpg");
+              const destino = argv[argv.length - 1];
+              await runCapture("magick", argv, 60000);
+              if (fs.existsSync(destino)) convertidos.push(destino);
+            } catch {}
           }
         }
+        // El historial y la vista previa deben apuntar al archivo CONVERTIDO:
+        // antes se registraba el .png original y la conversión a .webp quedaba
+        // invisible en Recientes (los dos archivos acababan en disco).
+        if (convertidos.length) job.files = convertidos;
       }
     }
     // Verificación final con ffprobe y escritura de historial
@@ -302,12 +355,19 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         } catch {}
       }
       addHistory({
-        id: Math.random().toString(36).slice(2, 10), url: job.url, title: files.length > 1 ? path.basename(f) : job.title,
+        id: newId(), url: job.url, title: files.length > 1 ? path.basename(f) : job.title,
         author: meta?.author || "", date: meta?.date || "", source: job.label, format: fmt, size, duration, path: f,
         thumbnail: job.thumbnail, engine: job.engine, mode: job.mode, createdAt: Date.now(), videoId: meta?.videoId,
       });
     }
-    if (!files.length) addHistory({ id: job.id, url: job.url, title: job.title, author: meta?.author || "", date: meta?.date || "", source: job.label, format: job.format, size: 0, duration: meta?.duration ?? 0, path: cfg.outputDir, thumbnail: job.thumbnail, engine: job.engine, mode: job.mode, createdAt: Date.now(), videoId: meta?.videoId });
+    // Sin archivos NO se inventa una entrada de historial con `path: outputDir`.
+    // Aquel "fantasma" apuntaba a una CARPETA: rompía Recientes (miniaturas y
+    // botón de abrir), envenenaba la deduplicación (isLiveFile siempre false) y
+    // hacía que la vista previa devolviera 404. Mejor: terminado, pero avisando.
+    if (!files.length) {
+      job.warning = "El motor terminó sin reportar archivos (¿ya estaba descargado, o ese formato no existe en el sitio?)";
+      job.log.push(`[aviso] ${job.warning}`);
+    }
     job.state = "done"; job.speed = 0; job.eta = "";
     event("done", { id: job.id, title: job.title });
   } catch (e) {
@@ -331,13 +391,19 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
     //  cortes del CDN, resets de conexión). Errores "honestos" (cookies,
     //  sin extractor, formato no soportado) NO se reintentan.
     const transitorio = /WinError 5|WinError 2|Acceso denegado|ENOENT|Giving up|Read error|Connection|timed?\s?out|10054|10053|HTTP Error 5\d\d|Got error/i.test(job.error);
-    if (transitorio && (job.attempts ?? 0) < 2 && job.state !== "canceled") {
-      job.attempts = (job.attempts ?? 0) + 1;
-      job.log.push(`[reintento ${job.attempts}/2] fallo transitorio, reintentando en 3 s: ${job.error.slice(0, 180)}`);
+    // Backoff exponencial: 3 s → 8 s → 20 s. Reintentar a los 3 s fijos contra
+    // un CDN que te está limitando (HTTP 5xx/429) solo quema los tres intentos
+    // seguidos; esperar cada vez más da tiempo real a que se recupere.
+    const BACKOFF = [3000, 8000, 20000];
+    const intentos = job.attempts ?? 0;
+    if (transitorio && intentos < BACKOFF.length && job.state !== "canceled") {
+      job.attempts = intentos + 1;
+      const espera = Math.round(BACKOFF[intentos] / 1000);
+      job.log.push(`[reintento ${job.attempts}/${BACKOFF.length}] fallo transitorio, reintentando en ${espera} s: ${job.error.slice(0, 180)}`);
       job.error = undefined;
       job.percent = 0; job.speed = 0; job.eta = "";
       job.state = "queued";
-      job.retryAt = Date.now() + 3000;
+      job.retryAt = Date.now() + BACKOFF[intentos];
       emit();
       return; // finally → emit() + pump() reprograma el reintento
     }

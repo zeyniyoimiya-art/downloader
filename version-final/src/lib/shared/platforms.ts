@@ -58,11 +58,34 @@ export function isSafeUrl(raw: string): boolean {
   try {
     const u = new URL(raw);
     if (u.protocol !== "https:" && u.protocol !== "http:") return false;
-    if (/^(localhost|127\.|10\.|192\.168\.|0\.0\.0\.0|\[::1\])/i.test(u.hostname)) return false;
+    if (isPrivateHost(u.hostname)) return false;
     return raw.length < 2048 && !/[\s"'`]/.test(raw);
   } catch {
     return false;
   }
+}
+
+/**
+ * Rechaza destinos de red local / link-local.
+ * Antes solo cubría `localhost`, `127.`, `10.`, `192.168.` y `[::1]`: se colaban
+ * 172.16/12, 169.254/16 (metadatos de nube), 0.x, `[::]` y `algo.localhost`.
+ * La app es local, pero un link pegado por accidente no debe poder sondear la
+ * red de tu casa ni el endpoint de metadatos de un VPS.
+ */
+export function isPrivateHost(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!h) return true;
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
+  if (h === "::1" || h === "::" || h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd")) return true;
+  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]), b = Number(v4[2]);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
 }
 
 export function detect(raw: string): Detected | null {

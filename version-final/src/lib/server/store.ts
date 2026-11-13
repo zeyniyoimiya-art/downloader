@@ -1,9 +1,22 @@
 // Persistencia 100% local: config.json, history.json, archives por modo y cookies
 // en la carpeta de datos del usuario.
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+
+/**
+ * Id corto y seguro para trabajos e historial.
+ *
+ * Antes: `Math.random().toString(36).slice(2, 10)`. Ese truco puede devolver
+ * MENOS de 8 caracteres (p. ej. 0.5 → "0.i" → "i"), así que dos trabajos
+ * podían acabar con el mismo id y las rutas `/api/jobs/[id]` (que validan
+ * /^[a-z0-9]{1,12}$/) empezaban a actuar sobre el trabajo equivocado.
+ */
+export function newId(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 10);
+}
 
 export const DATA_DIR = process.env.LINYUE_DATA || path.join(os.homedir(), ".linyue");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
@@ -124,16 +137,34 @@ function writeJSON(file: string, data: unknown) {
   atomicWrite(file, JSON.stringify(data, null, 2));
 }
 
+/**
+ * Caché de config con invalidación por mtime.
+ *
+ * `getConfig()` se llama en cada pump de la cola, en cada job y en casi todas
+ * las rutas: eran lecturas SÍNCRONAS de disco (readFileSync + JSON.parse +
+ * validación Zod) decenas de veces por segundo durante una descarga. Con esto
+ * se lee una vez y se revalida con un `statSync` barato; si otra pestaña o el
+ * editor cambian config.json, el mtime cambia y se recarga sola.
+ */
+let cfgCache: { mtime: number; cfg: Config } | null = null;
+
 export function getConfig(): Config {
   ensure();
+  let mtime = 0;
+  try { mtime = fs.statSync(CONFIG_FILE).mtimeMs; } catch {}
+  if (cfgCache && cfgCache.mtime === mtime) return cfgCache.cfg;
   const parsed = ConfigSchema.safeParse({ ...defaultConfig(), ...readJSON(CONFIG_FILE, {}) });
-  return parsed.success ? parsed.data : defaultConfig();
+  const cfg = parsed.success ? parsed.data : defaultConfig();
+  cfgCache = { mtime, cfg };
+  return cfg;
 }
 export function saveConfig(c: Config) {
   writeJSON(CONFIG_FILE, c);
+  cfgCache = null;
 }
 export function resetConfig() {
   writeJSON(CONFIG_FILE, defaultConfig());
+  cfgCache = null;
 }
 
 export interface HistoryItem {
@@ -155,8 +186,18 @@ export interface HistoryItem {
   videoId?: string;
 }
 
+// Caché del historial (mismo criterio que la config): antes CADA consulta a
+// /api/history, cada enqueue y cada guardado volvía a leer y parsear el JSON
+// entero —hasta 5000 entradas— de forma síncrona.
+let histCache: { mtime: number; items: HistoryItem[] } | null = null;
+
 export function getHistory(): HistoryItem[] {
-  return readJSON<HistoryItem[]>(HISTORY_FILE, []);
+  let mtime = 0;
+  try { mtime = fs.statSync(HISTORY_FILE).mtimeMs; } catch {}
+  if (histCache && histCache.mtime === mtime) return histCache.items;
+  const items = readJSON<HistoryItem[]>(HISTORY_FILE, []);
+  histCache = { mtime, items };
+  return items;
 }
 export function addHistory(item: HistoryItem) {
   const h = getHistory();
@@ -164,12 +205,20 @@ export function addHistory(item: HistoryItem) {
   // Si esta misma URL ya estaba pero el archivo ya no está en el disco, olvida
   // la entrada muerta: si no, el historial se llenaría de fantasmas cada vez
   // que vuelves a bajar algo que borraste.
-  const vivo = h.filter((x) => !(normalizeUrl(x.url) === n && !isLiveFile(x)));
+  //
+  // OJO al orden de las condiciones: primero se descarta por URL (barato) y
+  // solo se toca el disco (`isLiveFile`) para las entradas de ESA url. Antes se
+  // hacía `!isLiveFile(x)` para las 5000 entradas → 5000 statSync por archivo
+  // descargado.
+  const vivo = h.filter((x) => normalizeUrl(x.url) !== n || isLiveFile(x));
   vivo.unshift(item);
-  writeJSON(HISTORY_FILE, vivo.slice(0, 5000));
+  const recortado = vivo.slice(0, 5000);
+  writeJSON(HISTORY_FILE, recortado);
+  histCache = null;
 }
 export function removeHistory(id: string) {
   writeJSON(HISTORY_FILE, getHistory().filter((h) => h.id !== id));
+  histCache = null;
 }
 
 /** El archivo de esta entrada sigue realmente en el disco (y es un archivo). */

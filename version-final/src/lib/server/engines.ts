@@ -106,6 +106,17 @@ export function resolveEngine(id: EngineId): string | null {
  */
 const VERSION_TIMEOUT_MS = 25000;
 
+/** Mata el proceso Y sus hijos (PyInstaller deja descendientes en Windows). */
+function killProc(p: ChildProcess) {
+  if (!p.pid) return;
+  try {
+    if (process.platform === "win32") spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { shell: false, windowsHide: true });
+    else process.kill(-p.pid, "SIGKILL");
+  } catch {
+    try { p.kill("SIGKILL"); } catch {}
+  }
+}
+
 function probeVersion(def: EngineDef, bin: string): Promise<{ version: string | null; detail: string }> {
   return new Promise((resolve) => {
     let out = "";
@@ -126,7 +137,9 @@ function probeVersion(def: EngineDef, bin: string): Promise<{ version: string | 
       return done({ version: null, detail: "no se pudo lanzar" });
     }
     t = setTimeout(() => {
-      try { p.kill(); } catch {}
+      // `p.kill()` sólo mata al padre: estos binarios son PyInstaller y dejan
+      // hijos (sobre todo en Windows). Se mata el árbol completo.
+      killProc(p);
       done({ version: null, detail: `no respondió en ${VERSION_TIMEOUT_MS / 1000} s` });
     }, VERSION_TIMEOUT_MS);
     p.stdout?.on("data", (d) => (out += d));
@@ -169,13 +182,28 @@ async function probeOne(def: EngineDef): Promise<EngineStatus> {
  * serlo. Con lotes de 4 la medición es fiable y además tarda menos.
  */
 const PROBE_BATCH = 4;
+/**
+ * Un solo escaneo a la vez. Antes, si dos pestañas pulsaban «Re-escanear» (o una
+ * lo pulsaba mientras un job disparaba su propio escaneo) se lanzaban DOS
+ * tandas de 12 binarios de 40–95 MB en paralelo: el disco se saturaba, los
+ * `--version` agotaban su timeout y motores sanos aparecían en ámbar.
+ */
+let scanning: Promise<EngineStatus[]> | null = null;
 export async function scanEngines(): Promise<EngineStatus[]> {
-  const res: EngineStatus[] = [];
-  for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
-    res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
+  if (scanning) return scanning;
+  scanning = (async () => {
+    const res: EngineStatus[] = [];
+    for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
+      res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
+    }
+    g.__lyEngines = res;
+    return res;
+  })();
+  try {
+    return await scanning;
+  } finally {
+    scanning = null;
   }
-  g.__lyEngines = res;
-  return res;
 }
 
 export async function getEngines(): Promise<EngineStatus[]> {

@@ -46,10 +46,10 @@ export default function Cookies() {
               <div className="flex items-center gap-3" style={{ animationDelay: `${i * 60}ms` }}>
                 <span className="h-3 w-3 rounded-full" style={{ background: META[c.site].color, boxShadow: `0 0 12px ${META[c.site].color}` }} />
                 <h2 className="font-semibold">{META[c.site].name}</h2>
-                <span className={`mono ml-auto sq-pill px-2.5 py-0.5 text-[11px] ${state === "probada" ? "bg-emerald-500/20 text-emerald-300" : state === "presente" ? "bg-violet-500/20 text-violet-200" : "bg-white/10 muted"}`}>{state}</span>
+                <span className={`mono ml-auto sq-pill px-2.5 py-0.5 text-[11px] ${state === "probada" ? "bg-emerald-500/20 text-emerald-300" : state === "presente" ? "bg-violet-500/20 text-violet-200" : "bg-[var(--fill-2)] muted"}`}>{state}</span>
               </div>
               {c.present && <p className="muted mono mt-2 text-[11px]">{c.lines} cookies · {new Date(c.updated!).toLocaleString()}</p>}
-              <textarea value={draft[c.site] ?? ""} onChange={(e) => setDraft((x) => ({ ...x, [c.site]: e.target.value }))} rows={3} placeholder="# Netscape HTTP Cookie File…" aria-label={`Cookies de ${META[c.site].name}`} className="mono scrim mt-3 w-full resize-none border border-white/10 p-3 text-xs outline-none sq-sm" />
+              <textarea value={draft[c.site] ?? ""} onChange={(e) => setDraft((x) => ({ ...x, [c.site]: e.target.value }))} rows={3} placeholder="# Netscape HTTP Cookie File…" aria-label={`Cookies de ${META[c.site].name}`} className="mono scrim mt-3 w-full resize-none border border-[var(--line)] p-3 text-xs outline-none sq-sm" />
               <div className="mt-3 flex flex-wrap gap-2">
                 <button disabled={!draft[c.site]} onClick={() => save(c.site, draft[c.site])} className="btn btn-primary h-9 px-4 text-xs sq-pill"><Save size={14} />Guardar</button>
                 <label className="btn btn-glass h-9 px-4 text-xs sq-pill"><Upload size={14} />Subir archivo

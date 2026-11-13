@@ -15,6 +15,13 @@ export interface ArgOptions {
   cookies?: string | null;
   ffmpegDir?: string | null;
   /**
+   * Ruta COMPLETA al binario de ffmpeg (no la carpeta).
+   * yt-dlp acepta la carpeta con `--ffmpeg-location`, pero spotdl exige el
+   * ejecutable (`--ffmpeg C:\...\ffmpeg.exe`); pasarle la carpeta hace que
+   * spotdl no lo encuentre y aborte la descarga entera.
+   */
+  ffmpegPath?: string | null;
+  /**
    * Carpeta para parciales e intermedios. Imprescindible para que bajar el
    * audio de algo que ya bajaste como vídeo no destruya el vídeo (ver abajo).
    */
@@ -132,7 +139,10 @@ case "yt-dlp": {
     case "spotdl": {
       const fmt = ["mp3", "flac", "opus", "m4a", "ogg", "wav"].includes(o.format) ? o.format : o.format === "vorbis" ? "ogg" : "mp3";
       const a = ["download", url, "--output", `${out}/{artists}/{title}.{output-ext}`, "--format", fmt, "--print-errors"];
-      if (o.ffmpegDir) a.push("--ffmpeg", sanitizeArg(o.ffmpegDir));
+      // spotdl quiere el EJECUTABLE. Antes se le pasaba la carpeta y fallaba
+      // con "FFmpeg not found" aunque ffmpeg estuviera ahí al lado.
+      const ffBin = o.ffmpegPath ?? o.ffmpegDir;
+      if (ffBin) a.push("--ffmpeg", sanitizeArg(ffBin));
       if (o.noRepeat) a.push("--archive", sanitizeArg(o.archiveFile));
       return a;
     }
@@ -140,7 +150,13 @@ case "yt-dlp": {
       const m = new URL(url).pathname.split("/").filter(Boolean)[0] ?? "";
       if (!/^[\w.]{1,30}$/.test(m)) throw new Error("Perfil de Instagram inválido");
       const a = ["--dirname-pattern", `${out}/instagram/{target}`, "--count", String(o.profileLimit), "--no-compress-json", "--fast-update"];
-      if (o.cookies) a.push("--load-cookies", "chrome"); // instaloader usa navegador; cookies.txt se maneja vía sesión
+      // ── COOKIES: aquí había un bug funcional ────────────────────────────────
+      // Antes se pasaba `--load-cookies chrome`, que significa "saca las cookies
+      // del navegador Chrome instalado". Con un cookies.txt pegado en /cookies
+      // esto (a) ignoraba por completo las cookies del usuario y (b) si Chrome
+      // no estaba instalado, instaloader abortaba. instaloader sí sabe leer
+      // ficheros de cookies Netscape con `-B/--cookiefile`.
+      if (o.cookies) a.push("--cookiefile", sanitizeArg(o.cookies));
       a.push("--", m);
       return a;
     }

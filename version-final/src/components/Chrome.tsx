@@ -46,7 +46,7 @@ export function Chrome() {
       <nav className="fixed inset-x-3 bottom-3 z-40 md:hidden">
         <div className="glass glass-strong sq flex justify-around p-1.5">
           {TABS.map((t) => (
-            <Link key={t.href} href={t.href} className={`btn flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[10px] sq-sm ${current === t.href ? "bg-white/15" : "muted"}`}>
+            <Link key={t.href} href={t.href} className={`btn flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[11px] sq-sm ${current === t.href ? "bg-[var(--fill-2)]" : "muted"}`}>
               <t.icon size={20} strokeWidth={1.5} />{t.label}
             </Link>
           ))}
@@ -104,7 +104,7 @@ function Island() {
                   <Ring value={j.percent} speed={j.speed}>{Math.round(j.percent)}</Ring>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{j.title}</div>
-                    <div className="mono truncate text-[10px] text-white/55">{j.engine} · {j.state === "running" ? `${fmtBytes(j.speed)}/s · ETA ${j.eta || "—"}` : j.state}</div>
+                    <div className="mono truncate text-[11px] text-white/55">{j.engine} · {j.state === "running" ? `${fmtBytes(j.speed)}/s · ETA ${j.eta || "—"}` : j.state}</div>
                   </div>
                   <button aria-label={j.state === "paused" ? "Reanudar" : "Pausar"} onClick={() => jobAction(j.id, j.state === "paused" ? "resume" : "pause")} className="btn h-8 w-8 rounded-full bg-white/10">{j.state === "paused" ? <Play size={14} /> : <Pause size={14} />}</button>
                   <button aria-label="Cancelar" onClick={() => jobAction(j.id, "cancel")} className="btn h-8 w-8 rounded-full bg-white/10"><X size={14} /></button>
