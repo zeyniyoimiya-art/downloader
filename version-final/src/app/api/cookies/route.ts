@@ -1,4 +1,5 @@
 // Gestor de cookies por sitio: guardar, borrar, estado y "probar sesión"
+import { guard, blocked } from "@/lib/server/guard";
 import fs from "node:fs";
 import { z } from "zod";
 import { cookieFile } from "@/lib/server/store";
@@ -17,6 +18,7 @@ export async function GET() {
   }));
 }
 export async function POST(req: Request) {
+  { const g = guard(req); if (!g.ok) return blocked(g); }
   const parsed = z.object({ site: Site, content: z.string().min(10).max(500_000) }).safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Contenido inválido" }, { status: 400 });
   // Validación mínima del formato Netscape
@@ -25,12 +27,14 @@ export async function POST(req: Request) {
   return Response.json({ ok: true });
 }
 export async function DELETE(req: Request) {
+  { const g = guard(req); if (!g.ok) return blocked(g); }
   const s = Site.safeParse(new URL(req.url).searchParams.get("site"));
   if (!s.success) return Response.json({ error: "Sitio inválido" }, { status: 400 });
   fs.rmSync(cookieFile(s.data), { force: true });
   return Response.json({ ok: true });
 }
 export async function PUT(req: Request) {
+  { const g = guard(req); if (!g.ok) return blocked(g); }
   const s = Site.safeParse((await req.json().catch(() => ({})))?.site);
   if (!s.success) return Response.json({ error: "Sitio inválido" }, { status: 400 });
   const f = cookieFile(s.data);

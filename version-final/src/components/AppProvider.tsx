@@ -77,7 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [muted]);
 
   const rescan = useCallback(async () => {
-    const r = await fetch("/api/engines", { method: "POST" });
+    const r = await fetch("/api/engines", { method: "POST", headers: { "x-linyue": "1" } });
     setEngines(await r.json());
   }, []);
 
@@ -93,7 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const jobAction = useCallback(async (id: string, action: string, to?: number) => {
     sfx.pop();
-    await fetch(`/api/jobs/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, to }) });
+    await fetch(`/api/jobs/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ action, to }) });
   }, []);
 
   // Valor MEMOIZADO. Sin esto el objeto literal cambiaba de identidad en cada

@@ -1,155 +1,335 @@
 @import "tailwindcss";
 
-/* ───────── Tokens Liquid Glass ───────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARBÓN & CARMESÍ · sistema visual
+   ───────────────────────────────────────────────────────────────────────────
+   Qué cambia respecto al «Liquid Glass» anterior y por qué:
+
+   · Vidrio → superficie. El blur de 40 px + reflejos especulares era lo que
+     daba el aire de iOS. Aquí los paneles son planos de carbón con UNA línea
+     de 1 px y una hairlina carmesí arriba: se lee como maquinaria, no como
+     plástico. Además cuesta muchísimo menos pintar (un blur grande por panel,
+     y en Ajustes hay decenas).
+   · Fucsia/violeta → carmesí (#e1122b). Un solo acento, usado con avaricia:
+     hairlinas, foco, estados activos y datos. El resto es negro, gris y hueso.
+   · Esquinas 28 px → 16 px. La burbuja gigante es justo lo contrario de
+     «premium minimalista»; el radio pequeño y constante hace que todo parezca
+     mecanizado con tolerancia cero.
+   · Se añade grano (film grain) sutil: sobre negro puro las superficies planas
+     se ven «vacías»; el ruido les da materia sin meter color.
+   ───────────────────────────────────────────────────────────────────────────
+   Tokens: TODO el color sale de aquí. Ningún componente escribe un hex suelto
+   salvo los SVG decorativos, y así el tema claro/oscuro sigue siendo real.
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  /* Spring aproximado con linear(): rebote controlado (stiffness ~170, damping ~14) */
+  /* Muelles de animación (stiffness ~170, damping ~14) */
   --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.1 28%, 1.078 30.3%, 0.999 38.2%, 0.981 41.7%, 0.973 45.5%, 0.98 52.5%, 1.001 66.1%, 1.002 77%, 1);
   --spring-soft: linear(0, 0.06 3%, 0.24 7%, 0.6 15%, 0.86 23%, 0.99 31%, 1.03 38%, 1.04 45%, 1.01 62%, 1);
-  --dur: 620ms;
-  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --dur: 480ms;
+  --font-sans: var(--font-sans-loaded, "Inter"), "Inter var", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "JetBrains Mono"), ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 
-  /* Dark obsidiana (por defecto) */
-  --bg: #07060c;
-  --fg: #f5f3ff;
-  --muted: rgba(235, 230, 255, 0.62);
-  --glass: rgba(28, 24, 44, 0.42);
-  --glass-strong: rgba(22, 18, 36, 0.68);
-  --stroke: rgba(255, 255, 255, 0.14);
-  --spec: rgba(255, 255, 255, 0.18);
-  --scrim: rgba(6, 5, 12, 0.25);
-  --shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 20px 50px -20px rgba(0,0,0,.7), 0 8px 18px -10px rgba(0,0,0,.5);
+  /* ── Oscuro: carbón ───────────────────────────────────────────────────── */
+  --bg: #050506;
+  --bg-deep: #000000;
+  --fg: #f4f4f5;
+  --muted: rgba(244, 244, 245, 0.56);
+  --faint: rgba(244, 244, 245, 0.34);
+
+  /* Superficies: ya no son «cristal», son placas */
+  --glass: #0a0a0b;
+  --glass-strong: #0d0d0f;
+  --panel-hi: rgba(255, 255, 255, 0.035);
+
+  /* Líneas: dos grosores, ninguno decorativo */
+  --stroke: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.065);
+  --fill: rgba(255, 255, 255, 0.035);
+  --fill-2: rgba(255, 255, 255, 0.075);
+  --spec: rgba(255, 255, 255, 0.07);
+  --scrim: rgba(5, 5, 6, 0.55);
+
+  /* Acento único: carmesí */
+  --red: #e1122b;
+  --red-bright: #ff2d45;
+  --red-deep: #7d0b1a;
+  --red-wash: rgba(225, 18, 43, 0.10);
+  --red-line: rgba(225, 18, 43, 0.42);
+  /** Para TEXTO pequeño el carmesí puro no llega a AA sobre negro: este sí. */
+  --accent-ink: #ff7d8c;
+  --accent-ink-soft: rgba(255, 125, 140, 0.68);
+
+  /* Estados: semánticos y sobrios, no neón */
+  --ok-ink: #62d9a2;
+  --warn-ink: #e8c15a;
+  --danger-ink: #ff7d8c;
+
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 60px -40px rgba(0, 0, 0, 0.95), 0 2px 8px -4px rgba(0, 0, 0, 0.8);
+  --shadow-red: 0 0 0 1px rgba(225, 18, 43, 0.35), 0 18px 50px -28px rgba(225, 18, 43, 0.55);
+  --grain: 0.035;
   color-scheme: dark;
 }
+
+/* ── Claro: hueso (no «frosted», no pastel) ───────────────────────────────── */
 :root.light {
-  --bg: #f3f1fb;
-  --fg: #16121f;
-  --muted: rgba(30, 22, 50, 0.62);
-  --glass: rgba(255, 255, 255, 0.5);
-  --glass-strong: rgba(255, 255, 255, 0.72);
-  --stroke: rgba(255, 255, 255, 0.75);
-  --spec: rgba(255, 255, 255, 0.7);
-  --scrim: rgba(255, 255, 255, 0.2);
-  --shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 20px 50px -24px rgba(60,30,120,.35), 0 6px 16px -10px rgba(60,30,120,.25);
+  --bg: #f2f0ec;
+  --bg-deep: #ffffff;
+  --fg: #100f10;
+  --muted: rgba(16, 15, 16, 0.60);
+  --faint: rgba(16, 15, 16, 0.40);
+  --glass: #faf9f7;
+  --glass-strong: #ffffff;
+  --panel-hi: rgba(255, 255, 255, 0.9);
+  --stroke: rgba(16, 15, 16, 0.13);
+  --line: rgba(16, 15, 16, 0.09);
+  --fill: rgba(16, 15, 16, 0.035);
+  --fill-2: rgba(16, 15, 16, 0.075);
+  --spec: rgba(255, 255, 255, 0.8);
+  --scrim: rgba(255, 255, 255, 0.5);
+  --red: #c20d24;
+  --red-bright: #e1122b;
+  --red-deep: #8d0b1a;
+  --red-wash: rgba(194, 13, 36, 0.07);
+  --red-line: rgba(194, 13, 36, 0.38);
+  --accent-ink: #ab0b1f;
+  --accent-ink-soft: rgba(171, 11, 31, 0.72);
+  --ok-ink: #0f7a53;
+  --warn-ink: #8a6100;
+  --danger-ink: #ab0b1f;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 24px 50px -36px rgba(30, 20, 15, 0.35), 0 2px 6px -4px rgba(30, 20, 15, 0.18);
+  --shadow-red: 0 0 0 1px rgba(194, 13, 36, 0.28), 0 18px 40px -30px rgba(194, 13, 36, 0.45);
+  --grain: 0.02;
   color-scheme: light;
 }
 
 @theme {
-  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --font-sans: var(--font-sans-loaded, "Inter"), -apple-system, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "JetBrains Mono"), ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 html, body { background: var(--bg); color: var(--fg); }
-body { font-family: var(--font-sans); letter-spacing: -0.011em; -webkit-font-smoothing: antialiased; min-height: 100dvh; overflow-x: hidden; }
-.mono { font-family: var(--font-mono); letter-spacing: 0; }
+body {
+  font-family: var(--font-sans);
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+/* Grano: sobre negro puro las placas planas se ven muertas. Un ruido al 3.5 %
+   les da materia (y no cuesta un solo byte de imagen: es un SVG inline). */
+body::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 80; pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+}
+.mono { font-family: var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
+.faint { color: var(--faint); }
 
-/* ───────── Squircle real con fallback ───────── */
-.sq { border-radius: 28px; }
-.sq-sm { border-radius: 16px; }
+/* ── Tipografía de sistema ────────────────────────────────────────────────
+   `.label`  micro-etiqueta en mayúsculas: sustituye a los iconitos-decorativos
+             como marcador de sección. Es el recurso editorial del diseño.
+   `.display` titular grande y apretado (el hero).
+   `.num`    cifras: mono, tabulares, sin tracking.                          */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px; line-height: 1; font-weight: 600;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--faint);
+}
+.display { font-weight: 700; letter-spacing: -0.045em; line-height: 0.94; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+/* ── Radios: pequeños, constantes, mecanizados ─────────────────────────── */
+.sq { border-radius: 16px; }
+.sq-sm { border-radius: 10px; }
 .sq-pill { border-radius: 999px; }
 @supports (corner-shape: squircle) {
-  .sq { corner-shape: squircle; border-radius: 48px; }
-  .sq-sm { corner-shape: squircle; border-radius: 26px; }
+  .sq { corner-shape: squircle; border-radius: 22px; }
+  .sq-sm { corner-shape: squircle; border-radius: 14px; }
 }
 
-/* ───────── Vidrio con óptica ───────── */
+/* ═════════════════════════ Placas ═════════════════════════
+   `.glass` conserva el nombre (lo usan todas las pantallas) pero ya no es
+   vidrio: es una placa de carbón con una hairlina carmesí en el borde
+   superior que se enciende al pasar el puntero. Ese detalle es todo el
+   «epic» del diseño: una línea roja de 1 px que respira.                    */
 .glass {
   position: relative;
-  background: linear-gradient(180deg, color-mix(in oklab, var(--glass) 70%, transparent), var(--glass));
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  background:
+    linear-gradient(180deg, var(--panel-hi) 0%, transparent 42%),
+    var(--glass);
   border: 1px solid var(--stroke);
   box-shadow: var(--shadow);
   isolation: isolate;
 }
-/* Capa especular superior + reflejo que sigue al puntero (--mx/--my) */
+/* Reflejo que sigue al puntero: al 5 % de blanco, solo un brillo, sin color. */
 .glass::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
-  background:
-    radial-gradient(420px circle at var(--mx, 30%) var(--my, -20%), color-mix(in oklab, var(--spec) 90%, transparent), transparent 45%),
-    linear-gradient(180deg, var(--spec) 0%, transparent 22%);
-  mix-blend-mode: soft-light;
-  opacity: .9;
+  background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.05), transparent 60%);
+  opacity: 0; transition: opacity 400ms ease;
 }
-/* Borde refractivo: anillo brillante superior */
+.glass:hover::before { opacity: 1; }
+/* HAIRLINA CARMESÍ: de transparente a rojo y de vuelta, pegada al borde de
+   arriba y sangrada 16 px por cada lado (nunca llega a las esquinas). */
 .glass::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px;
-  background: linear-gradient(160deg, rgba(255,255,255,.45), transparent 30%, transparent 70%, rgba(255,255,255,.18));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
+  content: ""; position: absolute; left: 16px; right: 16px; top: -1px; height: 1px; border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--red-line) 12%, var(--red) 50%, var(--red-line) 88%, transparent);
+  opacity: 0.55; transition: opacity 400ms ease, box-shadow 400ms ease;
 }
+.glass:hover::after { opacity: 1; box-shadow: 0 0 12px 0 var(--red-line); }
 .glass-strong { background: var(--glass-strong); }
-.refract { filter: url(#ly-refract); }
+/* Placa que SÍ debe gritar: la del hero y la de un estado activo. */
+.accent-card { box-shadow: var(--shadow-red), var(--shadow); }
+.accent-card::after { opacity: 1; }
+.refract { filter: none; }
 
-/* Scrim sutil para contraste AA sobre vidrio */
+.bar-line { background: linear-gradient(90deg, transparent, var(--red) 50%, transparent); }
+
+/* Tarjeta de modo elegible: marco carmesí al seleccionar (antes era un ring fucsia). */
+.sel { box-shadow: inset 0 0 0 1px var(--red-line), 0 18px 40px -30px rgba(225, 18, 43, 0.9); }
+.grad-red { background: linear-gradient(155deg, rgba(225, 18, 43, 0.22), rgba(255, 255, 255, 0.015) 70%); color: var(--accent-ink); }
+:root.light .grad-red { background: linear-gradient(155deg, rgba(194, 13, 36, 0.12), rgba(16, 15, 16, 0.02) 70%); }
+/* Insignias de estado de las cookies */
+.badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
+.badge-ok { background: color-mix(in oklab, var(--ok-ink) 16%, transparent); color: var(--ok-ink); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ok-ink) 35%, transparent); }
+.badge-red { background: var(--red-wash); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--red-line); }
+
+/* Barra de pestañas móvil */
+.tabbar {
+  background: color-mix(in oklab, var(--bg) 92%, var(--glass-strong));
+  backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--stroke);
+  box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
 .scrim { background: var(--scrim); }
 
-/* ───────── Botones con squish + rebote ───────── */
+/* ── Filetes y marcas ──────────────────────────────────────────────────── */
+/* Regla de 1 px con degradado: separa secciones sin dibujar una caja. */
+.rule { height: 1px; background: linear-gradient(90deg, var(--red-line), var(--line) 30%, transparent); }
+.rule-plain { height: 1px; background: var(--line); }
+/* Cuadradito carmesí delante de un título de sección. */
+.tick::before {
+  content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 8px;
+  background: var(--red); vertical-align: 2px;
+}
+
+/* ═════════════════════════ Botones ═════════════════════════ */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
   font-weight: 600; letter-spacing: -0.01em; cursor: pointer; user-select: none;
-  transition: transform var(--dur) var(--spring), background-color .3s, box-shadow .3s, opacity .2s;
-  will-change: transform;
+  transition: transform var(--dur) var(--spring), background-color .25s, border-color .25s, box-shadow .25s, opacity .2s;
 }
-.btn:hover { transform: translateY(-1px) scale(1.02); }
-.btn:active { transform: scale(0.96); transition-duration: 90ms; transition-timing-function: ease-out; }
-.btn:disabled { opacity: .45; pointer-events: none; }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: scale(0.975); transition-duration: 90ms; transition-timing-function: ease-out; }
+.btn:disabled { opacity: .4; pointer-events: none; }
+
+/* Primario: carmesí sólido. Blanco sobre #e1122b = 4.6:1 (AA). */
 .btn-primary {
-  color: white;
-  background: linear-gradient(135deg, #8b5cf6, #d946ef 55%, #ec4899);
-  box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 10px 30px -10px rgba(217,70,239,.7);
+  color: #fff;
+  background: linear-gradient(180deg, var(--red-bright), var(--red) 55%, var(--red-deep));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 12px 30px -14px rgba(225, 18, 43, 0.85);
 }
-.btn-glass { background: color-mix(in oklab, var(--glass-strong) 80%, transparent); border: 1px solid var(--stroke); backdrop-filter: blur(20px) saturate(160%); }
-.btn-glass:hover { background: color-mix(in oklab, var(--glass-strong) 100%, white 6%); }
+.btn-primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 16px 40px -14px rgba(225, 18, 43, 1); }
+/* Secundario: placa con filete. El hover sube el borde a carmesí: es el único
+   «aviso» de interactividad además del cursor. */
+.btn-glass {
+  background: var(--fill);
+  border: 1px solid var(--stroke);
+  color: var(--fg);
+}
+.btn-glass:hover { background: var(--fill-2); border-color: var(--red-line); }
 
-/* Focus ring de vidrio luminoso */
-:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px rgba(217,70,239,.75), 0 0 24px 4px rgba(168,85,247,.45) !important; }
+/* Foco: anillo carmesí de 2 px. En botones/controles lleva halo; en campos de
+   texto no, porque un textarea grande con halo rojo parece un error. */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--red), 0 0 22px 2px rgba(225, 18, 43, 0.45) !important;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  box-shadow: 0 0 0 1px var(--red) !important;
+  border-color: var(--red-line) !important;
+}
 
-/* Iconos estilo SF Symbols con micro-animación */
+/* Iconos: sin rotación «cuca», solo un desplazamiento mínimo */
 .ico { transition: transform var(--dur) var(--spring); }
-.btn:hover .ico, a:hover .ico { transform: rotate(-8deg) scale(1.12); }
+.btn:hover .ico, a:hover .ico { transform: translateY(-1px); }
 
-/* ───────── Animaciones de entrada ───────── */
-@keyframes land { from { opacity: 0; transform: translateY(-10px) scale(.6); } to { opacity: 1; transform: none; } }
-.land { animation: land 700ms var(--spring) both; }
-@keyframes rise { from { opacity: 0; transform: translateY(24px) scale(.97); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
-.rise { animation: rise 800ms var(--spring) both; }
-@keyframes banner { from { opacity: 0; transform: translateY(-40px) scale(.7); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
-.banner-in { animation: banner 650ms var(--spring) both; }
-@keyframes breathe { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(217,70,239,0)); } 50% { transform: scale(1.06); filter: drop-shadow(0 0 14px rgba(217,70,239,.6)); } }
-.breathe { animation: breathe 4s ease-in-out infinite; }
-@keyframes amber { 0%,100% { box-shadow: var(--shadow); } 50% { box-shadow: 0 0 0 1px rgba(255,159,10,.7), 0 0 30px rgba(255,159,10,.55); } }
-.amber { animation: amber 1.6s ease-in-out infinite; }
-/* Línea de luz que recorre el vidrio (barra de progreso del hero) */
-@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+/* ── Entradas ──────────────────────────────────────────────────────────── */
+@keyframes land { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.land { animation: land 520ms var(--spring) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 640ms var(--spring) both; }
+@keyframes banner { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+.banner-in { animation: banner 380ms var(--spring) both; }
+/* El «breathe» del logo pasa a ser un pulso de la línea roja, no un escalado. */
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.breathe { animation: breathe 3.4s ease-in-out infinite; }
+@keyframes amber { 0%, 100% { box-shadow: var(--shadow); } 50% { box-shadow: 0 0 0 1px rgba(232, 193, 90, 0.6), 0 0 26px rgba(232, 193, 90, 0.35); } }
+.amber { animation: amber 1.8s ease-in-out infinite; }
+/* Línea de luz que recorre una barra de progreso: ahora es carmesí. */
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(320%); } }
 .lightline { position: relative; overflow: hidden; }
-.lightline::after { content: ""; position: absolute; inset: 0; width: 35%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent); animation: sweep 1.6s ease-in-out infinite; }
+.lightline::after {
+  content: ""; position: absolute; inset: 0; width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: sweep 1.5s ease-in-out infinite;
+}
 @keyframes shimmer { to { background-position: -200% 0; } }
-.skeleton { background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent) 0 0/200% 100%; animation: shimmer 1.4s linear infinite; }
+.skeleton { background: linear-gradient(90deg, transparent, var(--fill-2), transparent) 0 0/200% 100%; animation: shimmer 1.5s linear infinite; }
 
-/* Transición de tema que se "derrite" (View Transitions) */
-::view-transition-old(root) { animation: melt-out 700ms ease both; }
-::view-transition-new(root) { animation: melt-in 700ms var(--spring-soft) both; }
-@keyframes melt-out { to { opacity: 0; filter: blur(18px) saturate(1.6); } }
-@keyframes melt-in { from { opacity: 0; filter: blur(18px); } }
+/* Transición de tema */
+::view-transition-old(root) { animation: melt-out 520ms ease both; }
+::view-transition-new(root) { animation: melt-in 520ms var(--spring-soft) both; }
+@keyframes melt-out { to { opacity: 0; filter: blur(14px); } }
+@keyframes melt-in { from { opacity: 0; filter: blur(14px); } }
 
 /* Odómetro */
 .odo { display: inline-flex; overflow: hidden; height: 1em; line-height: 1em; vertical-align: -0.1em; }
 .odo > span { display: flex; flex-direction: column; transition: transform 900ms var(--spring); }
 
-/* Scrollbars discretas */
-* { scrollbar-width: thin; scrollbar-color: rgba(168,85,247,.35) transparent; }
+/* Slider: pista fina, thumb carmesí */
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: var(--fill-2); outline: none; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 999px;
+  background: var(--red); border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--red-line), 0 2px 8px rgba(225, 18, 43, 0.6); cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: 999px;
+  background: var(--red); cursor: pointer;
+}
+input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--fill-2); }
 
-/* Cursor de vidrio */
-.lens { position: fixed; left: 0; top: 0; width: 34px; height: 34px; border-radius: 999px; pointer-events: none; z-index: 9999;
-  backdrop-filter: blur(1px) saturate(200%) brightness(1.15); -webkit-backdrop-filter: blur(1px) saturate(200%) brightness(1.15);
-  border: 1px solid rgba(255,255,255,.5); box-shadow: inset 0 1px 6px rgba(255,255,255,.5), 0 6px 20px rgba(0,0,0,.25);
-  transition: width .4s var(--spring), height .4s var(--spring), opacity .3s; }
-.lens.big { width: 56px; height: 56px; }
+/* Scrollbars discretas */
+* { scrollbar-width: thin; scrollbar-color: var(--red-line) transparent; }
+
+/* Cursor: anillo fino carmesí (antes era una lente de vidrio tipo iOS) */
+.lens {
+  position: fixed; left: 0; top: 0; width: 22px; height: 22px; border-radius: 999px; pointer-events: none; z-index: 9999;
+  border: 1px solid var(--red); box-shadow: 0 0 10px -2px var(--red);
+  opacity: 0; transition: width .3s var(--spring), height .3s var(--spring), opacity .3s ease;
+}
+.lens.active { opacity: .55; }
+.lens.big { width: 34px; height: 34px; opacity: .3; }
 @media (pointer: coarse) { .lens { display: none; } }
 
-/* ───────── Reduced motion: vidrio estático, sin springs ───────── */
+/* Texto con acento: ahora carmesí, legible en ambos temas */
+.grad-text { color: var(--accent-ink); }
+:root.light .grad-text { color: var(--accent-ink); }
+
+/* Contraste reforzado del sistema */
+@media (prefers-contrast: more) {
+  :root { --muted: rgba(244, 244, 245, 0.86); --faint: rgba(244, 244, 245, 0.7); --stroke: rgba(255, 255, 255, 0.34); --line: rgba(255, 255, 255, 0.28); --red: #ff2d45; --accent-ink: #ff9aa6; }
+  :root.light { --muted: rgba(16, 15, 16, 0.9); --faint: rgba(16, 15, 16, 0.75); --stroke: rgba(16, 15, 16, 0.4); --line: rgba(16, 15, 16, 0.32); --red: #a30a1d; --accent-ink: #8d0b1a; }
+  body::after { display: none; }
+  .lens { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-timing-function: ease !important; transition-duration: 150ms !important; }
   .btn:hover, .btn:active { transform: none; }

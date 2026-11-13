@@ -1,5 +1,0 @@
-(node:16560) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-⚠ Turbopack's filesystem cache has been deleted as the result of a user request. Builds or page loads may be slower as a result.
-(node:15540) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)

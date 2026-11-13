@@ -8,14 +8,15 @@ const FRAG = `precision mediump float;
 uniform float t; uniform vec2 r; uniform vec2 m; uniform float light;
 float n(vec2 p){return sin(p.x)*sin(p.y);}
 void main(){
-  vec2 uv = gl_FragCoord.xy / r; vec2 p = uv*3.0 + m*0.25;
-  float a = n(p + vec2(t*0.07, t*0.05)) + 0.5*n(p*1.7 - vec2(t*0.04, -t*0.06)) + 0.25*n(p*3.1 + t*0.03);
-  vec3 purple = vec3(0.49,0.23,0.93), pink = vec3(0.93,0.28,0.6), cyan = vec3(0.13,0.83,0.93);
-  vec3 c = mix(purple, pink, smoothstep(-0.6, 0.8, a + uv.x - 0.5));
-  c = mix(c, cyan, smoothstep(0.35, 1.2, a*0.8 + uv.y*0.9 - 0.3));
-  float glow = smoothstep(1.3, -0.2, length(uv - vec2(0.5 + 0.2*sin(t*0.05), 0.75)));
-  vec3 base = light > 0.5 ? vec3(0.96,0.95,0.99) : vec3(0.027,0.024,0.047);
-  vec3 col = mix(base, c, (light > 0.5 ? 0.33 : 0.55) * glow + 0.08);
+  vec2 uv = gl_FragCoord.xy / r; vec2 p = uv*3.0 + m*0.18;
+  float a = n(p + vec2(t*0.05, t*0.04)) + 0.5*n(p*1.7 - vec2(t*0.03, -t*0.04)) + 0.25*n(p*3.1 + t*0.02);
+  // Brasa: del rojo profundo al negro. Sin violeta, sin cian, sin arcoíris.
+  vec3 ember = vec3(0.62,0.05,0.10), coal = vec3(0.16,0.02,0.04), ash = vec3(0.03,0.03,0.035);
+  vec3 c = mix(coal, ember, smoothstep(-0.4, 1.0, a + uv.x - 0.35));
+  c = mix(c, ash, smoothstep(0.2, 1.1, uv.y*0.8 + a*0.4));
+  float glow = smoothstep(1.5, -0.4, length(uv - vec2(0.34 + 0.16*sin(t*0.04), 0.86)));
+  vec3 base = light > 0.5 ? vec3(0.95,0.94,0.93) : vec3(0.02,0.02,0.024);
+  vec3 col = mix(base, c, (light > 0.5 ? 0.16 : 0.5) * glow + 0.02);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -66,8 +67,13 @@ export function Ambient() {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let x = -100, y = -100, lx = -100, ly = -100, raf = 0;
     let tiltEl: HTMLElement | null = null, rx = 0, ry = 0, trx = 0, try_ = 0;
+    let lensTimer: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
       x = e.clientX; y = e.clientY;
+      // La lente solo se muestra mientras hay movimiento (ver .lens en globals.css)
+      lens.current?.classList.add("active");
+      clearTimeout(lensTimer);
+      lensTimer = setTimeout(() => lens.current?.classList.remove("active"), 1400);
       const t = e.target as HTMLElement;
       const g = t.closest?.(".glass") as HTMLElement | null;
       if (g) { const b = g.getBoundingClientRect(); g.style.setProperty("--mx", `${x - b.left}px`); g.style.setProperty("--my", `${y - b.top}px`); }
@@ -95,7 +101,7 @@ export function Ambient() {
       if (tiltEl) { tiltEl.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg)`; if (Math.abs(rx) + Math.abs(ry) < 0.01 && trx === 0) { tiltEl.style.transform = ""; tiltEl = null; } }
     };
     addEventListener("pointermove", onMove); raf = requestAnimationFrame(loop);
-    return () => { removeEventListener("pointermove", onMove); cancelAnimationFrame(raf); };
+    return () => { removeEventListener("pointermove", onMove); clearTimeout(lensTimer); cancelAnimationFrame(raf); };
   }, []);
 
   // Confeti de partículas de vidrio al completar una descarga
@@ -103,14 +109,14 @@ export function Ambient() {
     if (!confetti || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const c = confettiCv.current; if (!c) return;
     const ctx = c.getContext("2d")!; c.width = innerWidth; c.height = innerHeight;
-    const P = Array.from({ length: 70 }, () => ({ x: innerWidth / 2, y: 40, vx: (Math.random() - 0.5) * 14, vy: Math.random() * 6 + 2, s: Math.random() * 8 + 4, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, h: [270, 320, 190][Math.floor(Math.random() * 3)] }));
+    const P = Array.from({ length: 70 }, () => ({ x: innerWidth / 2, y: 40, vx: (Math.random() - 0.5) * 14, vy: Math.random() * 6 + 2, s: Math.random() * 8 + 4, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, h: [352, 0, 355][Math.floor(Math.random() * 3)] }));
     let raf = 0, f = 0;
     const loop = () => {
       ctx.clearRect(0, 0, c.width, c.height); f++;
       for (const p of P) {
         p.vy += 0.25; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.globalAlpha = Math.max(0, 1 - f / 110);
-        ctx.fillStyle = `hsla(${p.h},90%,75%,.55)`; ctx.strokeStyle = "rgba(255,255,255,.8)";
+        ctx.fillStyle = `hsla(${p.h},80%,${p.h === 0 ? 55 : 62}%,.75)`; ctx.strokeStyle = "rgba(255,255,255,.35)";
         ctx.beginPath(); ctx.roundRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.6, 2); ctx.fill(); ctx.stroke(); ctx.restore();
       }
       if (f < 110) raf = requestAnimationFrame(loop); else ctx.clearRect(0, 0, c.width, c.height);
@@ -121,14 +127,21 @@ export function Ambient() {
 
   return (
     <>
-      <div aria-hidden className="fixed inset-0 -z-10" style={{ background: theme === "light" ? "radial-gradient(1200px 700px at 70% 0%, #e9d5ff, transparent), radial-gradient(900px 600px at 0% 100%, #cffafe, transparent), #f3f1fb" : "radial-gradient(1200px 700px at 70% 0%, #3b0764, transparent), radial-gradient(900px 600px at 0% 100%, #083344, transparent), #07060c" }} />
+      <div aria-hidden className="fixed inset-0 -z-10" style={{ background: theme === "light" ? "radial-gradient(1100px 620px at 78% -10%, rgba(194,13,36,.07), transparent 60%), radial-gradient(900px 520px at 0% 105%, rgba(16,15,16,.06), transparent 60%), #f2f0ec" : "radial-gradient(1100px 640px at 76% -12%, rgba(225,18,43,.16), transparent 62%), radial-gradient(820px 520px at -8% 108%, rgba(225,18,43,.06), transparent 60%), #050506" }} />
       <canvas ref={cv} aria-hidden className="fixed inset-0 -z-10 h-full w-full" style={{ filter: "blur(30px) saturate(130%)", transform: "scale(1.1)" }} />
-      {/* Partículas de profundidad (CSS) */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 opacity-60">
-        {Array.from({ length: 18 }).map((_, i) => (
-          <span key={i} className="absolute rounded-full bg-white/40 breathe" style={{ left: `${(i * 53) % 100}%`, top: `${(i * 37) % 100}%`, width: 2 + (i % 4), height: 2 + (i % 4), animationDelay: `${i * 0.4}s`, filter: "blur(.5px)" }} />
-        ))}
-      </div>
+      {/* Retícula técnica: 1 px cada 96 px, desvanecida hacia los bordes.
+          Sustituye a las partículas flotantes: da escala sin hacer ruido. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0"
+        style={{ zIndex: -9,
+          backgroundImage: "linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)",
+          backgroundSize: "96px 96px",
+          maskImage: "radial-gradient(circle at 50% 0%, black 0%, transparent 78%)",
+          WebkitMaskImage: "radial-gradient(circle at 50% 0%, black 0%, transparent 78%)",
+          opacity: 0.5,
+        }}
+      />
       <canvas ref={confettiCv} aria-hidden className="pointer-events-none fixed inset-0 z-[90]" />
       <div ref={lens} aria-hidden className="lens" />
       {/* Filtro SVG de refracción de borde */}

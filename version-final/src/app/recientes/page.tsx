@@ -1,4 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element --
+   Mismo caso que page.tsx: la carátula la sirve el sitio de origen, no nosotros.
+*/
 // "/recientes": fichas de vidrio con búsqueda, filtros, menú contextual, preview local (Range) y parallax de carátulas.
 import { useEffect, useMemo, useState } from "react";
 import { Search, FolderOpen, Copy, RotateCcw, Trash2, Music2, Film, Image as ImageIcon, Headphones } from "lucide-react";
@@ -37,15 +40,15 @@ export default function Recientes() {
 
   const act = async (kind: string, it: HistoryView) => {
     sfx.pop(); setMenu(null);
-    if (kind === "open") await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id }) });
-    if (kind === "play") { const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id, play: true }) }); if (!r.ok) toast({ kind: "err", title: "ffplay no disponible" }); }
+    if (kind === "open") await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id }) });
+    if (kind === "play") { const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id, play: true }) }); if (!r.ok) toast({ kind: "err", title: "ffplay no disponible" }); }
     if (kind === "copy") { await navigator.clipboard.writeText(it.path); toast({ kind: "info", title: "Ruta copiada" }); }
     if (kind === "redo") {
       const fmtOk = /^[a-z0-9]{2,8}$/.test(it.format) ? it.format : "mp4";
-      await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
+      await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
       toast({ kind: "info", title: "Re-bajando", body: it.title });
     }
-    if (kind === "del") { await fetch(`/api/history?id=${it.id}`, { method: "DELETE" }); setItems((x) => x?.filter((y) => y.id !== it.id) ?? null); }
+    if (kind === "del") { await fetch(`/api/history?id=${it.id}`, { method: "DELETE", headers: { "x-linyue": "1" } }); setItems((x) => x?.filter((y) => y.id !== it.id) ?? null); }
   };
 
   // Clasificar por la extensión REAL del archivo en disco (it.path), no por el
@@ -62,11 +65,11 @@ export default function Recientes() {
   return (
     <div className="space-y-6">
       <div className="rise">
-        <h1 className="text-4xl font-bold tracking-[-0.035em]">Recientes</h1>
+        <p className="label" style={{ color: "var(--accent-ink)" }}>Historial</p><h1 className="display mt-2 text-[2.4rem]">Recientes</h1>
         <p className="muted mt-1 text-sm">Tu historial vive en <span className="mono">history.json</span>, en esta máquina.</p>
       </div>
       <Panel className="flex flex-wrap items-center gap-3 p-3">
-        <label className="scrim flex min-w-56 flex-1 items-center gap-2 border border-white/10 px-3 py-2 sq-pill">
+        <label className="scrim flex min-w-56 flex-1 items-center gap-2 border border-[var(--line)] px-3 py-2 sq-pill">
           <Search size={16} strokeWidth={1.5} className="muted" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar título, autor o link" className="w-full bg-transparent text-sm outline-none" aria-label="Buscar" />
         </label>
@@ -92,12 +95,12 @@ export default function Recientes() {
                     </div>
                   ) : isVideo(it) ? <video src={`/api/media?id=${it.id}`} controls autoPlay playsInline className="h-full w-full bg-black" onError={() => setMediaErr(it.id)} /> : <div className="grid h-full place-items-center p-4"><audio src={`/api/media?id=${it.id}`} controls autoPlay className="w-full" onError={() => setMediaErr(it.id)} /></div>
                 ) : it.thumbnail ? (
-                  <img src={it.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-[120%] w-full object-cover transition-transform duration-700 group-hover:scale-105" style={{ transform: `translateY(${-((scrollY * 0.04 + i * 3) % 20)}px)` }} />
+                  <img loading="lazy" decoding="async" src={it.thumbnail} alt="" referrerPolicy="no-referrer" className="h-[120%] w-full object-cover transition-transform duration-700 group-hover:scale-105" style={{ transform: `translateY(${-((scrollY * 0.04 + i * 3) % 20)}px)` }} />
                 ) : (
-                  <div className="grid h-full place-items-center bg-gradient-to-br from-violet-500/30 to-pink-500/20">{isVideo(it) ? <Film size={36} strokeWidth={1} /> : isAV(it) ? <Music2 size={36} strokeWidth={1} /> : <ImageIcon size={36} strokeWidth={1} />}</div>
+                  <div className="grid h-full place-items-center bg-[linear-gradient(150deg,rgba(225,18,43,.16),rgba(255,255,255,.02))]">{isVideo(it) ? <Film size={36} strokeWidth={1} /> : isAV(it) ? <Music2 size={36} strokeWidth={1} /> : <ImageIcon size={36} strokeWidth={1} />}</div>
                 )}
                 {isAV(it) && playing !== it.id && <button onClick={() => { sfx.pop(); setMediaErr(null); setPlaying(it.id); }} className="btn absolute bottom-3 left-3 h-10 w-10 rounded-full bg-white/90 text-black opacity-0 group-hover:opacity-100" aria-label="Reproducir">▶</button>}
-                <span className="mono absolute right-3 top-3 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] uppercase text-white">{it.format}</span>
+                <span className="mono absolute right-3 top-3 rounded-lg bg-black/60 px-2 py-0.5 text-[11px] uppercase text-white">{it.format}</span>
               </div>
               <div className="p-4">
                 <h3 className="line-clamp-2 text-sm font-semibold">{it.title}</h3>
@@ -124,7 +127,7 @@ export default function Recientes() {
         <div role="menu" className="glass glass-strong banner-in fixed z-[80] w-56 p-1.5 sq-sm" style={{ left: Math.min(menu.x, innerWidth - 240), top: Math.min(menu.y, innerHeight - 240) }} onClick={(e) => e.stopPropagation()}>
           {[["open", "Abrir carpeta", FolderOpen], ["play", "Escucha rápida (ffplay)", Headphones], ["copy", "Copiar ruta", Copy], ["redo", "Re-bajar", RotateCcw], ["del", "Eliminar del historial", Trash2]].map(([k, l, I]) => {
             const Icon = I as typeof Copy;
-            return <button key={k as string} role="menuitem" onClick={() => act(k as string, menu.item)} className={`btn w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm font-normal hover:bg-white/10 ${k === "del" ? "text-rose-300" : ""}`}><Icon size={15} strokeWidth={1.5} />{l as string}</button>;
+            return <button key={k as string} role="menuitem" onClick={() => act(k as string, menu.item)} className={`btn w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm font-normal hover:bg-[var(--fill-2)] ${k === "del" ? "text-[var(--danger-ink)]" : ""}`}><Icon size={15} strokeWidth={1.5} />{l as string}</button>;
           })}
         </div>
       )}

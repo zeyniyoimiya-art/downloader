@@ -1,4 +1,5 @@
 node_modules/
+package-lock.json
 .next/
 out/
 build/
@@ -7,3 +8,18 @@ next-env.d.ts
 test-results/
 playwright-report/
 .env*
+
+# ── Binarios de motores (≈385 MB: ffmpeg, ffprobe, ffplay, deno...) ──────────
+# No van al repo: cada uno pesa ~95 MB y GitHub avisa a partir de 50 MB.
+# Se descargan aparte en ./vendor (ver README → "Motores").
+vendor/*.exe
+vendor/exiftool_files/
+vendor/*.dll
+
+# ── Salidas y logs de pruebas (pueden contener rutas y cookies) ─────────────
+test/
+tests/*.log
+tests/e2e-*.mjs
+_*.log
+_*.json
+_*.txt

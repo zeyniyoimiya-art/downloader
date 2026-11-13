@@ -1,9 +1,22 @@
 // Persistencia 100% local: config.json, history.json, archives por modo y cookies
 // en la carpeta de datos del usuario.
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+
+/**
+ * Id corto y seguro para trabajos e historial.
+ *
+ * Antes: `Math.random().toString(36).slice(2, 10)`. Ese truco puede devolver
+ * MENOS de 8 caracteres (p. ej. 0.5 → "0.i" → "i"), así que dos trabajos
+ * podían acabar con el mismo id y las rutas `/api/jobs/[id]` (que validan
+ * /^[a-z0-9]{1,12}$/) empezaban a actuar sobre el trabajo equivocado.
+ */
+export function newId(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 10);
+}
 
 export const DATA_DIR = process.env.LINYUE_DATA || path.join(os.homedir(), ".linyue");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
@@ -17,20 +30,109 @@ export const COOKIES_DIR = path.join(DATA_DIR, "cookies");
 export const TEMP_DIR = path.join(DATA_DIR, "tmp");
 
 // Esquema de configuración validado con Zod
+// ── Carpeta de salida: se rechazan carpetas de sistema ──────────────────────
+// Un dedo torpe (o, antes del parche de guard.ts, una web maliciosa) podía poner
+// outputDir = "C:\Windows\System32" y llenar el sistema de .mkv. Se exige ruta
+// absoluta y se veta la lista de sitios donde escribir es tirar la casa abajo.
+const SISTEMA = /(?:^|\\)(windows|system32|syswow64|program files(?: \\(x86\\))?|programdata|\$recycle\.bin|winre)(?:\\|$)/i;
+const outputDirT = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((v) => /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(v.trim()), "Debe ser una ruta absoluta (C:\\... o /home/...)")
+  .refine((v) => !SISTEMA.test(v.replace(/\//g, "\\")), "Esa es una carpeta del sistema: elige otra");
+
+// ── Proxy ────────────────────────────────────────────────────────────────────
+// Solo esquemas conocidos y sin credenciales embebidas en la URL pública: un
+// proxy con `usuario:clave@` acabaría en el log de un trabajo y en el historial.
+// Si necesitas auth, usa un proxy local (Clash/v2ray) sin credenciales expuestas.
+const proxyT = z.string().max(200).refine(
+  // Puerto real (1–65535): un `:99999` no es un proxy, es una errata que
+  // después se convierte en un timeout de 30 s sin explicación.
+  (v) => v.trim() === "" || /^(https?|socks[45]?):\/\/[^\s@/:]+(:(?:[1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))?(\/\S*)?$/i.test(v.trim()),
+  "Proxy inválido: usa http://host:puerto o socks5://host:puerto (sin usuario@ en la URL)"
+).refine((v) => !/@/.test(v), "No pongas usuario:contraseña en la URL del proxy");
+
+// ── Rango de lista ───────────────────────────────────────────────────────────
+// Se valida en el servidor porque acaba como argumento de un proceso:
+// "--playlist-items 1-20" sí, "--playlist-items $(rm -rf)" jamás.
+const rangoT = z.string().max(120).refine(
+  (v) => v.trim() === "" || /^-?\d{1,5}(-\d{1,5})?(,-?\d{1,5}(-\d{1,5})?)*$/.test(v.trim()),
+  'Rango inválido: usa "1-20", "-10", "5" o "1,3,7-9"'
+);
+
+// Hora "HH:MM" (24 h). Se valida con la misma función que usa el programador,
+// para que no exista el caso "el ajuste dice 25:99 y la cola no arranca nunca".
+const horaT = z.string().max(5).refine((v) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(v.trim()), "Hora inválida: usa HH:MM (00:00–23:59)");
+
 export const ConfigSchema = z.object({
-  outputDir: z.string().min(1).max(500),
+  outputDir: outputDirT,
   vendorDir: z.string().min(1).max(500),
   enginePaths: z.record(z.string(), z.string().max(500)).default({}),
-  audioFormat: z.enum(["m4a", "mp3", "flac", "wav", "opus", "aac", "vorbis"]),
-  videoFormat: z.enum(["mp4", "mkv", "webm"]),
-  videoQuality: z.enum(["best", "4320", "2160", "1440", "1080", "720", "480"]),
-  photoFormat: z.enum(["original", "webp", "jpg"]),
-  concurrency: z.number().int().min(1).max(8),
+  audioFormat: z.enum(["best", "m4a", "mp3", "flac", "wav", "opus", "aac", "vorbis", "alac", "aiff", "ac3", "eac3", "dts", "mp2"]),
+  videoFormat: z.enum(["mp4", "mkv", "webm", "mov", "m4v", "ts", "avi", "flv", "ogv"]),
+  videoQuality: z.enum(["best", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"]),
+  photoFormat: z.enum(["original", "webp", "jpg", "png", "avif"]),
+  /** 0 = SIN LÍMITE (tantas descargas como trabajos en cola). */
+  concurrency: z.number().int().min(0).max(64),
+  /** Freno de seguridad: tope duro aunque concurrency sea 0. */
+  maxConcurrency: z.number().int().min(1).max(64),
+  /** Política ante "FLAC desde AAC": estricto | avisar | libre */
+  fidelity: z.enum(["estricto", "avisar", "libre"]),
   turbo: z.boolean(),
 noRepeat: z.boolean(),
   embedMetadata: z.boolean(),
   profileLimit: z.number().int().min(1).max(5000),
   altEngineCN: z.boolean(),
+  // ── Red / rate limit ──
+  /** "chrome", "firefox", "edge"… o "" para no leer cookies del navegador. */
+  cookiesFromBrowser: z.string().max(60),
+  /** Navegador a suplantar en TLS (necesita curl_cffi). "" = desactivado. */
+  impersonate: z.string().max(30),
+  /** Límite de velocidad por trabajo: "500K", "4M", "" = sin límite. */
+  limitRate: z.string().max(12),
+  /** Reintentos internos del motor. */
+  retries: z.number().int().min(0).max(10),
+  /** Segundos de espera entre peticiones al mismo dominio (0 = ninguno). */
+  sleepRequests: z.number().min(0).max(10),
+  /** Peticiones por minuto y host en la cola (0 = sin límite propio). */
+  ratePerMinute: z.number().int().min(0).max(600),
+  /** Sondas de vista previa simultáneas. */
+  probeConcurrency: z.number().int().min(1).max(8),
+  /** Calidad de audio para códecs con pérdida: "" auto, "320K", "0"…"9". */
+  audioQuality: z.string().max(8),
+  // ── Códecs y pistas (fase 5) ──
+  /** Códec de vídeo preferido. "auto" = el mejor que sirva el sitio. */
+  videoCodec: z.enum(["auto", "h264", "h265", "av1", "vp9", "vp8", "mpeg4", "prores", "theora"]),
+  /** Subtítulos: off | sidecar (.srt aparte) | embed (dentro del archivo). */
+  subtitles: z.enum(["off", "sidecar", "embed"]),
+  /** Idiomas de subtítulos: "es,en" o "all". */
+  subLangs: z.string().max(120),
+  /** Incluir subtítulos automáticos cuando el sitio no tiene oficiales. */
+  autoSubs: z.boolean(),
+  /** Incrustar capítulos en el archivo. */
+  chapters: z.boolean(),
+  /** Incrustar la miniatura como carátula. */
+  embedThumbnail: z.boolean(),
+  /** Al convertir un audio, conservar el archivo original. */
+  keepOriginal: z.boolean(),
+  /** Recodificar el vídeo si el sitio no sirve el códec pedido (lento). */
+  reencodeVideo: z.boolean(),
+  /** Carpeta de tu nube de Baidu donde se transfieren los recursos (转存). */
+  baiduDir: z.string().max(200),
+  // ── Red avanzada, listas y nombres (fase 7) ──
+  /** Proxy para TODOS los motores: "http://127.0.0.1:7890", "socks5://…". "" = directo. */
+  proxy: proxyT,
+  /** Rango de elementos de una lista/perfil: "", "1-20", "-10", "1,3,7-9". */
+  playlistRange: rangoT,
+  /** Cómo se nombran las carpetas y archivos. */
+  naming: z.enum(["ordenado", "compacto", "plano", "fecha"]),
+  /** Pedir a yt-dlp que archive también los vídeos ya vistos en la lista. */
+  abortOnDiskFull: z.boolean(),
+  /** Ventana "solo descargar de noche": los trabajos nuevos esperan. */
+  quietEnabled: z.boolean(),
+  quietFrom: horaT,
+  quietTo: horaT,
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -45,12 +147,38 @@ export const defaultConfig = (): Config => ({
   videoFormat: "mp4",
   videoQuality: "1080",
   photoFormat: "original",
-  concurrency: 2,
+  concurrency: 0,      // sin límite por defecto (ver maxConcurrency)
+  maxConcurrency: 24,  // freno de seguridad del sistema
+  fidelity: "estricto",
 turbo: true,
   noRepeat: true,
   embedMetadata: true,
   profileLimit: 50,
   altEngineCN: false,
+  cookiesFromBrowser: "",
+  impersonate: "",
+  limitRate: "",
+  retries: 3,
+  sleepRequests: 0,
+  ratePerMinute: 0,
+  probeConcurrency: 3,
+  audioQuality: "",
+  videoCodec: "auto",
+  subtitles: "off",
+  subLangs: "es,en",
+  autoSubs: false,
+  chapters: true,
+  embedThumbnail: true,
+  keepOriginal: false,
+  reencodeVideo: false,
+  baiduDir: "/我的资源",
+  proxy: "",
+  playlistRange: "",
+  naming: "ordenado",
+  abortOnDiskFull: true,
+  quietEnabled: false,
+  quietFrom: "01:00",
+  quietTo: "07:00",
 });
 
 /** Primera carpeta `vendor` que exista entre las raíces candidatas. */
@@ -124,16 +252,34 @@ function writeJSON(file: string, data: unknown) {
   atomicWrite(file, JSON.stringify(data, null, 2));
 }
 
+/**
+ * Caché de config con invalidación por mtime.
+ *
+ * `getConfig()` se llama en cada pump de la cola, en cada job y en casi todas
+ * las rutas: eran lecturas SÍNCRONAS de disco (readFileSync + JSON.parse +
+ * validación Zod) decenas de veces por segundo durante una descarga. Con esto
+ * se lee una vez y se revalida con un `statSync` barato; si otra pestaña o el
+ * editor cambian config.json, el mtime cambia y se recarga sola.
+ */
+let cfgCache: { mtime: number; cfg: Config } | null = null;
+
 export function getConfig(): Config {
   ensure();
+  let mtime = 0;
+  try { mtime = fs.statSync(CONFIG_FILE).mtimeMs; } catch {}
+  if (cfgCache && cfgCache.mtime === mtime) return cfgCache.cfg;
   const parsed = ConfigSchema.safeParse({ ...defaultConfig(), ...readJSON(CONFIG_FILE, {}) });
-  return parsed.success ? parsed.data : defaultConfig();
+  const cfg = parsed.success ? parsed.data : defaultConfig();
+  cfgCache = { mtime, cfg };
+  return cfg;
 }
 export function saveConfig(c: Config) {
   writeJSON(CONFIG_FILE, c);
+  cfgCache = null;
 }
 export function resetConfig() {
   writeJSON(CONFIG_FILE, defaultConfig());
+  cfgCache = null;
 }
 
 export interface HistoryItem {
@@ -155,8 +301,18 @@ export interface HistoryItem {
   videoId?: string;
 }
 
+// Caché del historial (mismo criterio que la config): antes CADA consulta a
+// /api/history, cada enqueue y cada guardado volvía a leer y parsear el JSON
+// entero —hasta 5000 entradas— de forma síncrona.
+let histCache: { mtime: number; items: HistoryItem[] } | null = null;
+
 export function getHistory(): HistoryItem[] {
-  return readJSON<HistoryItem[]>(HISTORY_FILE, []);
+  let mtime = 0;
+  try { mtime = fs.statSync(HISTORY_FILE).mtimeMs; } catch {}
+  if (histCache && histCache.mtime === mtime) return histCache.items;
+  const items = readJSON<HistoryItem[]>(HISTORY_FILE, []);
+  histCache = { mtime, items };
+  return items;
 }
 export function addHistory(item: HistoryItem) {
   const h = getHistory();
@@ -164,12 +320,20 @@ export function addHistory(item: HistoryItem) {
   // Si esta misma URL ya estaba pero el archivo ya no está en el disco, olvida
   // la entrada muerta: si no, el historial se llenaría de fantasmas cada vez
   // que vuelves a bajar algo que borraste.
-  const vivo = h.filter((x) => !(normalizeUrl(x.url) === n && !isLiveFile(x)));
+  //
+  // OJO al orden de las condiciones: primero se descarta por URL (barato) y
+  // solo se toca el disco (`isLiveFile`) para las entradas de ESA url. Antes se
+  // hacía `!isLiveFile(x)` para las 5000 entradas → 5000 statSync por archivo
+  // descargado.
+  const vivo = h.filter((x) => normalizeUrl(x.url) !== n || isLiveFile(x));
   vivo.unshift(item);
-  writeJSON(HISTORY_FILE, vivo.slice(0, 5000));
+  const recortado = vivo.slice(0, 5000);
+  writeJSON(HISTORY_FILE, recortado);
+  histCache = null;
 }
 export function removeHistory(id: string) {
   writeJSON(HISTORY_FILE, getHistory().filter((h) => h.id !== id));
+  histCache = null;
 }
 
 /** El archivo de esta entrada sigue realmente en el disco (y es un archivo). */

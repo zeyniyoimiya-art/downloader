@@ -33,6 +33,20 @@ export const ENGINES: EngineDef[] = [
   // así que se marca opcional para que no aparezca como motor caído.
   { id: "exiftool", exe: "exiftool.exe", alt: ["exiftool(-k).exe"], bin: "exiftool", role: "EXIF de fotos (sin uso actual)", versionArgs: ["-ver"], optional: true },
   { id: "deno", exe: "deno.exe", alt: [], bin: "deno", role: "Scripts de mantenimiento", versionArgs: ["--version"], optional: true },
+  // ── Ampliación universal ──────────────────────────────────────────────────
+  // streamlink: en directos resuelve la lista HLS maestra y permite elegir
+  // calidad; yt-dlp en vivo es más frágil (reinicia el .part, corta el chat).
+  { id: "streamlink", exe: "streamlink.exe", alt: [], bin: "streamlink", role: "Directos y VOD: Twitch, Kick (HLS)", versionArgs: ["--version"], optional: true },
+  // you-get: cubre varios sitios CN que yt-dlp no toca (Youku, iQiyi, Weibo…).
+  { id: "youget", exe: "you-get.exe", alt: ["youget.exe"], bin: "you-get", role: "Sitios CN: Douyin, Youku, iQiyi, Weibo", versionArgs: ["--version"], optional: true },
+  // curl: para archivos directos (zip, pdf, iso, apk, m3u8 suelto). Viene con
+  // Windows 10+ y con todas las distros, así que no es opcional.
+  { id: "curl", exe: "curl.exe", alt: [], bin: "curl", role: "Descarga directa de archivos", versionArgs: ["--version"] },
+  // 百度网盘: único cliente de línea de comandos que hace 转存 + descarga.
+  // Requiere que TÚ inicies sesión una vez en él (`BaiduPCS-Go login`): la app
+  // nunca ve tu BDUSS ni tu STOKEN.
+  { id: "aliyunpan", exe: "aliyunpan.exe", alt: ["aliyunpan-cli.exe"], bin: "aliyunpan", role: "Aliyun Pan (necesita tu cuenta)", versionArgs: ["--version"], optional: true },
+  { id: "baidupcs", exe: "BaiduPCS-Go.exe", alt: ["baidupcs-go.exe", "BaiduPCS-Go"], bin: "BaiduPCS-Go", role: "Baidu Pan (necesita tu cuenta)", versionArgs: ["--version"], optional: true },
 ];
 
 // Nombres de archivo permitidos para cada motor (whitelist estricta)
@@ -106,6 +120,17 @@ export function resolveEngine(id: EngineId): string | null {
  */
 const VERSION_TIMEOUT_MS = 25000;
 
+/** Mata el proceso Y sus hijos (PyInstaller deja descendientes en Windows). */
+function killProc(p: ChildProcess) {
+  if (!p.pid) return;
+  try {
+    if (process.platform === "win32") spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { shell: false, windowsHide: true });
+    else process.kill(-p.pid, "SIGKILL");
+  } catch {
+    try { p.kill("SIGKILL"); } catch {}
+  }
+}
+
 function probeVersion(def: EngineDef, bin: string): Promise<{ version: string | null; detail: string }> {
   return new Promise((resolve) => {
     let out = "";
@@ -126,7 +151,9 @@ function probeVersion(def: EngineDef, bin: string): Promise<{ version: string | 
       return done({ version: null, detail: "no se pudo lanzar" });
     }
     t = setTimeout(() => {
-      try { p.kill(); } catch {}
+      // `p.kill()` sólo mata al padre: estos binarios son PyInstaller y dejan
+      // hijos (sobre todo en Windows). Se mata el árbol completo.
+      killProc(p);
       done({ version: null, detail: `no respondió en ${VERSION_TIMEOUT_MS / 1000} s` });
     }, VERSION_TIMEOUT_MS);
     p.stdout?.on("data", (d) => (out += d));
@@ -163,19 +190,86 @@ async function probeOne(def: EngineDef): Promise<EngineStatus> {
 }
 
 /**
+ * Actualización de motores que SABEN actualizarse solos.
+ *
+ * Es la mejora más rentable a largo plazo: yt-dlp se rompe cada pocas semanas
+ * cuando un sitio cambia, y el usuario acaba con "Unsupported URL" sin saber que
+ * su binario tiene seis meses. Aquí no se adivina: se ejecutan los comandos
+ * oficiales de cada herramienta, uno detrás de otro (nunca a la vez: tres
+ * descargas simultáneas en el mismo disco se estorban).
+ *
+ * Solo comandos de una LISTA BLANCA fija. Nada de ejecutar texto del usuario.
+ */
+const AUTO_UPDATE: { id: EngineId; args: string[] }[] = [
+  { id: "yt-dlp", args: ["-U"] },
+  { id: "gallerydl", args: ["--update"] },
+  { id: "baidupcs", args: ["update"] },
+  { id: "deno", args: ["upgrade"] },
+];
+
+export interface UpdateResult { id: EngineId; ok: boolean; msg: string; version?: string | null }
+
+function ejecutar(bin: string, args: string[], timeoutMs = 180000): Promise<{ code: number; salida: string }> {
+  return new Promise((resolve) => {
+    const p = spawn(bin, args, { windowsHide: true });
+    let salida = "";
+    const cap = (d: Buffer) => { if (salida.length < 4000) salida += d.toString(); };
+    p.stdout.on("data", cap);
+    p.stderr.on("data", cap);
+    const t = setTimeout(() => { try { p.kill(); } catch { /* ya murió */ } }, timeoutMs);
+    p.on("close", (code) => { clearTimeout(t); resolve({ code: code ?? -1, salida }); });
+    p.on("error", (e) => { clearTimeout(t); resolve({ code: -1, salida: e.message }); });
+  });
+}
+
+export async function updateEngines(): Promise<UpdateResult[]> {
+  if (MOCK) return AUTO_UPDATE.map((u) => ({ id: u.id, ok: true, msg: "simulado (modo demo)" }));
+  const res: UpdateResult[] = [];
+  for (const u of AUTO_UPDATE) {
+    const bin = resolveEngine(u.id);
+    if (!bin) continue;
+    const { code, salida } = await ejecutar(bin, u.args);
+    const limpio = salida.replace(/\s+/g, " ").trim().slice(0, 220);
+    // yt-dlp y compañía devuelven 0 aunque "ya está actualizado"; el mensaje
+    // real (en inglés) es lo útil, así que se muestra tal cual.
+    res.push({ id: u.id, ok: code === 0, msg: limpio || `código ${code}`, });
+  }
+  // Un único rescaneo al final para refrescar versiones en el panel.
+  await scanEngines();
+  const estado = await getEngines();
+  for (const r of res) r.version = estado.find((e) => e.id === r.id)?.version ?? null;
+  return res;
+}
+
+/**
  * Sondeo por LOTES, no los 12 a la vez.
  * Lanzarlos todos en paralelo saturaba CPU y disco (varios pesan 40–95 MB),
  * y los últimos en arrancar agotaban su timeout y se daban por muertos sin
  * serlo. Con lotes de 4 la medición es fiable y además tarda menos.
  */
 const PROBE_BATCH = 4;
+/**
+ * Un solo escaneo a la vez. Antes, si dos pestañas pulsaban «Re-escanear» (o una
+ * lo pulsaba mientras un job disparaba su propio escaneo) se lanzaban DOS
+ * tandas de 12 binarios de 40–95 MB en paralelo: el disco se saturaba, los
+ * `--version` agotaban su timeout y motores sanos aparecían en ámbar.
+ */
+let scanning: Promise<EngineStatus[]> | null = null;
 export async function scanEngines(): Promise<EngineStatus[]> {
-  const res: EngineStatus[] = [];
-  for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
-    res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
+  if (scanning) return scanning;
+  scanning = (async () => {
+    const res: EngineStatus[] = [];
+    for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
+      res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
+    }
+    g.__lyEngines = res;
+    return res;
+  })();
+  try {
+    return await scanning;
+  } finally {
+    scanning = null;
   }
-  g.__lyEngines = res;
-  return res;
 }
 
 export async function getEngines(): Promise<EngineStatus[]> {
