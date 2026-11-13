@@ -1,0 +1,24 @@
+[2026-10-08T04:22:28.590Z] Inicio del test E2E
+Cookies del usuario copiadas al sandbox: 3 archivo(s)
+Levantando servidor en puerto 3099
+  Node: C:\Program Files\nodejs\node.exe
+  Next CLI: C:\Users\Zenith\Desktop\D\downloader\version-final\node_modules\next\dist\bin\next
+Servidor listo
+
+Config OK: outputDir=C:\Users\Zenith\Desktop\D\downloader\version-final\test, noRepeat=false
+Filtro: "x-profile" → 1 tests
+Enqueue: [x-profile] Perfil X Fotos
+PASS: [x-profile] Perfil X Fotos
+
+══════════════════════════════════════════════════════════════════════
+=== REPORTE E2E REAL (ronda 2) ===
+══════════════════════════════════════════════════════════════════════
+Total: 1 | PASS: 1 | FAIL: 0 | NEEDS_COOKIES: 0 | SIN_SOPORTE: 0 | SKIP: 0
+Archivos en test/passed/: 66
+
+✅ Pasaron:
+  [x-profile] Perfil X Fotos (original)
+
+— Cobertura por red —
+  x-profile: 1/1 OK
+══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,43 @@
+
+> build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+
+  Creating an optimized production build ...
+(node:13932) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✓ Compiled successfully in 42s
+  Running TypeScript ...
+  Finished TypeScript in 18.9s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/7) ...
+  Generating static pages using 7 workers (1/7) 
+  Generating static pages using 7 workers (3/7) 
+  Generating static pages using 7 workers (5/7) 
+✓ Generating static pages using 7 workers (7/7) in 389ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /ajustes
+├ ƒ /api/config
+├ ƒ /api/cookies
+├ ƒ /api/engines
+├ ƒ /api/events
+├ ƒ /api/health
+├ ƒ /api/history
+├ ƒ /api/jobs
+├ ƒ /api/jobs/[id]
+├ ƒ /api/media
+├ ƒ /api/open
+├ ƒ /api/probe
+├ ƒ /api/status
+├ ○ /cookies
+└ ○ /recientes
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

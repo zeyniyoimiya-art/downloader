@@ -1,0 +1,9 @@
+{
+  "name": "Linyue · Descargador Universal Local",
+  "short_name": "Linyue",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07060c",
+  "theme_color": "#07060c",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

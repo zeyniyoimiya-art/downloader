@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linyue • Descargador Universal</title>
+  <meta name="description" content="Audio, video, fotos y perfiles enteros. Todo se procesa localmente.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.7em' font-size='90' font-family='system-ui'>L</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;1000;700&display=swap" rel="stylesheet">
+  <style>
+    /* ───────── Variables ───────── */
+    :root {
+      --bg: #07060c;
+      --fg: #f5f3ff;
+      --muted: rgba(235, 230, 255, 0.62);
+      --glass: rgba(28, 24, 44, 0.42);
+      --accent: #d946ef;
+      --accent-light: #8b5cf6;
+      --accent-pink: #ec4899;
+      --radius: 16px;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      letter-spacing: -0.011em;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body { font-size: 16px; }
+    .mono { font-family: var(--font-mono); }
+    .muted { color: var(--muted); }
+    
+    /* ───────── Layout ───────── */
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 3rem;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .logo-text { font-size: 1.25rem; font-weight: 600; }
+    .logo-sub { font-size: 0.875rem; color: var(--muted); }
+    
+    /* ───────── Hero ───────── */
+    .hero {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .hero-title {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 800;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-pink));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      color: var(--muted);
+      max-width: 540px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    
+    /* ───────── Card ───────── */
+    .card {
+      background: var(--glass);
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    /* ───────── Textarea ───────── */
+    .input-group label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    .textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      padding: 1rem;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .textarea::-webkit-scrollbar {
+      width: 8px;
+    }
+    .textarea::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+    }
+    .textarea:focus {
+      border-color: rgba(217,70,239,0.4);
+      box-shadow: 0 0 0 2px rgba(217,70,239,0.15);
+    }
+    .textarea::placeholder { color: rgba(255,255,255,0.4); }
+    
+    /* ───────── Chips ───────── */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0;
+      margin: 1rem 0 0.25rem;
+      list-style: none;
+      align-items: center;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255,255,255,0.05);
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .chip-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    
+    /* ───────── Buttons ───────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background-color 0.2s, opacity 0.2s;
+      border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-light), var(--accent) 55%, var(--accent-pink));
+      box-shadow: 0 4px 12px -4px rgba(217,70,239,0.3);
+      color: white;
+    }
+    .btn-secondary {
+      background: var(--glass);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--fg);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    /* ───────── Controls ───────── */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .control-group label { font-size: 0.75rem; color: var(--muted); }
+    .select {
+      padding: 0.5rem 0.75rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    
+    /* ───────── Status ───────── */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 1rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: #34d399;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    
+    /* ───────── Footer ───────── */
+    footer {
+      text-align: center;
+      padding: 2rem 0 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    
+    /* ───────── Responsive ───────── */
+    @media (max-width: 480px) {
+      .container { padding: 0 0.5rem; }
+      .card { padding: 1rem; }
+      .btn { padding: 0.6rem 1rem; font-size: 0.8rem; }
+      .hero-title { font-size: 1.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-dot" style="
+          width: 40px; height: 40px;
+          background: linear-gradient(135deg, #8b5cf6, #d946ef 60%, #ec4899);
+          border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 24px; font-weight: 700; color: white;">L</div>
+        <div>
+          <div class="logo-text">Linyue</div>
+          <div class="logo-sub mono">Descargador universal local</div>
+        </div>
+      </div>
+    </header>
+    
+    <section class="hero">
+      <h1 class="hero-title">Baja lo que quieras, con ficha completa</h1>
+      <p class="hero-desc">
+        Audio, video, fotos y perfiles enteros desde YouTube, TikTok, X, Instagram, Spotify y cientos de sitios más. 
+        Todo se procesa en tu máquina, sin subidas.
+      </p>
+    </section>
+    
+    <section class="card">
+      <form id="download-form">
+        <div class="input-group">
+          <label for="links">Enlaces (uno por línea)</label>
+          <textarea id="links" name="links" class="textarea" placeholder="https://youtu.be/..." spellcheck="false"></textarea>
+        </div>
+        
+        <ul class="chips" id="chips">
+          <li class="chip"><span class="chip-dot"></span> <span>0 enlaces detectados</span></li>
+        </ul>
+        
+        <div class="controls">
+          <select id="mode" class="control-group">
+            <option value="audio">🎵 Música (MP3, M4A, FLAC)</option>
+            <option value="video">🎬 Video (MP4, MKV, 8K)</option>
+            <option value="photo">🖼️ Fotos (Original, JPG, WEBP)</option>
+            <option value="all">✨ Todo (Fotos + Video + Audio)</option>
+          </select>
+          
+          <select id="format" class="control-group">
+            <option value="mp3">Formato: MP3</option>
+            <option value="m4a">M4A</option>
+            <option value="flac">FLAC</option>
+            <option value="mp4">MP4</option>
+          </select>
+          
+          <select id="quality" class="control-group">
+            <option value="best">Calidad: máx</option>
+            <option value="2160">4K (2160p)</option>
+            <option value="1440">2K (1440p)</option>
+            <option value="1080">1080p</option>
+          </select>
+        </div>
+        
+        <div class="status">
+          <span class="status-dot"></span>
+          <span>0 archivos en carpeta actual</span>
+        </div>
+        
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="submit" class="btn btn-primary" id="download-btn">
+            📥 Descargar
+          </button>
+          <button type="button" class="btn btn-secondary" id="preview-btn">
+            👁️ Vista previa
+          </button>
+        </div>
+      </form>
+    </section>
+    
+    <footer>
+      <p>Linyue • Descargador universal local • <a href="#" style="color: var(--accent); text-decoration: none;">Configurar</a></p>
+      <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #888;">Todo el procesamiento ocurre localmente. 0 datos subidos.</p>
+    </footer>
+  </div>
+  
+  <script>
+    // Estado mínimo
+    const textarea = document.getElementById('links');
+    const chips = document.getElementById('chips');
+    const downloadBtn = document.getElementById('download');
+    const statusEl = document.querySelector('.status');
+    
+    // Contar enlaces
+    function updateChips() {
+      const lines = textarea.value.trim().split('\n').filter(l => l.trim());
+      const count = lines.length;
+      chips.innerHTML = '';
+      
+      if (count === 0) {
+        chips.innerHTML = '<li class="chip"><span class="chip-dot"></span> <span>0 enlaces detectados</span></li>';
+        return;
+      }
+      
+      // Mostrar primeros 3 enlaces como chips
+      lines.slice(0, 3).forEach((url, i) => {
+        const domain = new URL(url.trim()).hostname;
+        const chip = document.createElement('li');
+        chip.className = 'chip';
+        chip.innerHTML = `<span class="chip-dot"></span><span>${domain}</span>`;
+        if (count > 3) {
+          chip.innerHTML += `<span style="color: #888;"> (+${count - 3})</span>`;
+        }
+        chips.appendChild(chip);
+      });
+    }
+    
+    textarea.addEventListener('input', updateChips);
+    
+    // Form submit
+    document.getElementById('download-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const links = textarea.value.trim().split('\n').filter(l => l.trim());
+      if (links.length === 0) return;
+      
+      // Simular descarga
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = '⏳ Descargando...';
+      statusEl.innerHTML = '<span class="status-dot" style="animation: none;"></span>Procesando...';
+      
+      // Recuperar estados
+      const mode = document.getElementById('mode').value;
+      const format = document.getElementById('format').value;
+      const quality = document.getElementById('quality').value;
+      
+      // Feedback rápido
+      setTimeout(() => {
+        statusEl.innerHTML = `<span class="status-dot"></span>En cola (${links.length}) · ${mode} → ${format}`;
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = '📥 Descargar';
+        textarea.value = '';
+        updateChips();
+      }, 800);
+    });
+    
+    // Vista previa
+    document.getElementById('preview-btn').addEventListener('click', function() {
+      const links = textarea.value.trim().split('\n').filter(l => l.trim());
+      if (links.length === 0) return alert('Pega al menos un enlace');
+      alert(`Vista previa de ${links.length} enlace(s)`);
+    });
+  </script>
+</body>
+</html>

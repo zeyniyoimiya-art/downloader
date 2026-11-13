@@ -1,0 +1,196 @@
+// Registro de los 12 motores: whitelist, resolución de ruta, detección de versión y salud.
+import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import type { EngineId } from "../shared/platforms";
+import { getConfig } from "./store";
+
+export interface EngineDef {
+  id: EngineId;
+  exe: string; // nombre del ejecutable en Windows
+  alt: string[]; // nombres alternativos aceptados (mismo binario, p.ej. ytdlp.exe)
+  bin: string; // nombre en PATH (Linux/macOS)
+  role: string;
+  versionArgs: string[];
+  optional?: boolean;
+}
+
+// WHITELIST: único conjunto de ejecutables que el servidor puede lanzar
+export const ENGINES: EngineDef[] = [
+  { id: "yt-dlp", exe: "yt-dlp.exe", alt: ["ytdlp.exe", "yt-dlp"], bin: "yt-dlp", role: "Video y audio general (primario)", versionArgs: ["--version"] },
+  { id: "ffmpeg", exe: "ffmpeg.exe", alt: [], bin: "ffmpeg", role: "Post-proceso, conversión y metadatos", versionArgs: ["-version"] },
+  { id: "ffprobe", exe: "ffprobe.exe", alt: [], bin: "ffprobe", role: "Inspección y verificación JSON", versionArgs: ["-version"] },
+  { id: "ffplay", exe: "ffplay.exe", alt: [], bin: "ffplay", role: "Escucha rápida", versionArgs: ["-version"], optional: true },
+  { id: "gallerydl", exe: "gallerydl.exe", alt: ["gallery-dl.exe"], bin: "gallery-dl", role: "Galerías: X, Pinterest, ArtStation", versionArgs: ["--version"] },
+  { id: "instaloader", exe: "instaloader.exe", alt: [], bin: "instaloader", role: "Perfiles completos de Instagram", versionArgs: ["--version"] },
+  { id: "spotdl", exe: "spotdl.exe", alt: [], bin: "spotdl", role: "Spotify con metadata y carátula", versionArgs: ["--version"] },
+  { id: "lux", exe: "lux.exe", alt: [], bin: "lux", role: "Motor alterno (sitios CN)", versionArgs: ["-v"], optional: true },
+  { id: "aria2c", exe: "aria2c.exe", alt: [], bin: "aria2c", role: "Aceleración multi-conexión (turbo)", versionArgs: ["--version"], optional: true },
+  { id: "magick", exe: "Magick.exe", alt: ["magick.exe"], bin: "magick", role: "Fotos a WEBP/JPG y carátulas", versionArgs: ["-version"] },
+  // exiftool: el paquete de Windows viene como `exiftool(-k).exe` + una carpeta
+  // `exiftool_files\` con las DLLs de Perl. Sin esa carpeta el .exe no arranca.
+  // Además NINGUNA parte de la app lo usa hoy (los metadatos van por ffprobe),
+  // así que se marca opcional para que no aparezca como motor caído.
+  { id: "exiftool", exe: "exiftool.exe", alt: ["exiftool(-k).exe"], bin: "exiftool", role: "EXIF de fotos (sin uso actual)", versionArgs: ["-ver"], optional: true },
+  { id: "deno", exe: "deno.exe", alt: [], bin: "deno", role: "Scripts de mantenimiento", versionArgs: ["--version"], optional: true },
+];
+
+// Nombres de archivo permitidos para cada motor (whitelist estricta)
+const allowedNames = (def: EngineDef): string[] => [def.exe, def.bin, ...def.alt].map((n) => n.toLowerCase());
+
+export type Health = "ok" | "warn" | "down";
+export interface EngineStatus {
+  id: EngineId;
+  exe: string;
+  role: string;
+  optional: boolean;
+  path: string | null;
+  version: string | null;
+  health: Health;
+  note: string;
+}
+
+const g = globalThis as unknown as { __lyEngines?: EngineStatus[]; __lyMock?: boolean };
+// Modo mock para tests/CI: nunca se lanzan ejecutables reales
+export const MOCK = process.env.LINYUE_MOCK_ENGINES === "1";
+
+// ── Búsqueda en PATH sin lanzar procesos ─────────────────────────────────────
+// Antes se hacía spawnSync("where", …) por cada alias: un subproceso SÍNCRONO
+// con hasta 3 s de espera que bloqueaba el event loop en cada resolución de
+// motor. Ahora se recorre PATH en JS puro (milisegundos, sin bloquear nada).
+let pathDirs: string[] | null = null;
+function inPath(names: string[]): string | null {
+  if (!pathDirs) {
+    pathDirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+    // Windows resuelve también contra el directorio actual.
+    if (process.platform === "win32") pathDirs.push(process.cwd());
+  }
+  const exts = process.platform === "win32"
+    ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean).map((e) => e.toLowerCase())
+    : [""];
+  for (const name of names) {
+    // Un nombre con extensión se prueba tal cual; sin ella, con cada PATHEXT.
+    const bases = /\.[a-z0-9]+$/i.test(name) ? [name.toLowerCase()] : exts.map((e) => name.toLowerCase() + e);
+    for (const dir of pathDirs) {
+      for (const base of bases) {
+        const full = path.join(dir, base);
+        try { if (fs.existsSync(full)) return full; } catch {}
+      }
+    }
+  }
+  return null;
+}
+
+export function resolveEngine(id: EngineId): string | null {
+  const def = ENGINES.find((e) => e.id === id);
+  if (!def) return null; // fuera de whitelist
+  const cfg = getConfig();
+  const names = allowedNames(def);
+  const custom = cfg.enginePaths[id];
+  const candidates = [custom, ...names.map((n) => path.join(cfg.vendorDir, n))].filter(Boolean) as string[];
+  for (const c of candidates) {
+    const abs = path.resolve(c);
+    // El nombre de archivo debe coincidir con la whitelist (evita apuntar a cualquier binario)
+    const base = path.basename(abs).toLowerCase();
+    if (!names.includes(base)) continue;
+    if (fs.existsSync(abs)) return abs;
+  }
+  return inPath(names);
+}
+
+/**
+ * Tiempo máximo para el sondeo informativo de `--version`.
+ * Los binarios son PyInstaller de 40–95 MB: en frío, y con el disco ocupado,
+ * tardan varios segundos en arrancar. 6 s era demasiado justo y marcaba
+ * motores sanos (yt-dlp) como caídos, lo que desactivaba la vista previa.
+ */
+const VERSION_TIMEOUT_MS = 25000;
+
+function probeVersion(def: EngineDef, bin: string): Promise<{ version: string | null; detail: string }> {
+  return new Promise((resolve) => {
+    let out = "";
+    let err = "";
+    let settled = false;
+    let p: ChildProcess;
+    let t: NodeJS.Timeout | undefined;
+    const done = (v: { version: string | null; detail: string }) => {
+      if (settled) return;
+      settled = true;
+      if (t) clearTimeout(t);
+      resolve(v);
+    };
+    try {
+      // `windowsHide` evita el parpadeo de consola; `shell:false` evita inyección.
+      p = spawn(bin, def.versionArgs, { shell: false, windowsHide: true });
+    } catch {
+      return done({ version: null, detail: "no se pudo lanzar" });
+    }
+    t = setTimeout(() => {
+      try { p.kill(); } catch {}
+      done({ version: null, detail: `no respondió en ${VERSION_TIMEOUT_MS / 1000} s` });
+    }, VERSION_TIMEOUT_MS);
+    p.stdout?.on("data", (d) => (out += d));
+    p.stderr?.on("data", (d) => (err += d)); // se consume siempre: un stderr lleno bloquea al hijo
+    p.on("error", (e) => done({ version: null, detail: `no se pudo lanzar (${e.message})` }));
+    p.on("close", (code) => {
+      // La versión se lee SOLO de stdout. Un binario roto (p. ej. exiftool sin su
+      // carpeta exiftool_files) escribe su error en stderr y antes ese texto se
+      // tomaba como "versión", ensuciando el panel con basura.
+      const line = out.split(/\r?\n/).find((l) => l.trim()) ?? "";
+      const m = line.match(/(\d+[\w.\-]*\d)/);
+      if (m) return done({ version: m[1], detail: "" });
+      if (code === 0) return done({ version: line.trim().slice(0, 40) || null, detail: "" });
+      const primera = err.split(/\r?\n/).find((l) => l.trim()) ?? "";
+      done({ version: null, detail: primera.trim().slice(0, 120) || `salió con código ${code}` });
+    });
+  });
+}
+
+async function probeOne(def: EngineDef): Promise<EngineStatus> {
+  const base = { id: def.id, exe: def.exe, role: def.role, optional: !!def.optional };
+  if (MOCK) return { ...base, path: `/mock/${def.exe}`, version: "mock-1.0", health: "ok", note: "mock" };
+  const bin = resolveEngine(def.id);
+  if (!bin) return { ...base, path: null, version: null, health: def.optional ? "warn" : "down", note: "No encontrado" };
+  const { version, detail } = await probeVersion(def, bin);
+  return {
+    ...base,
+    path: bin,
+    version,
+    // Encontrado pero sin versión = sigue siendo usable; solo es un aviso.
+    health: version ? "ok" : "warn",
+    note: version ? "Listo" : `Encontrado, pero sin versión: ${detail}`,
+  };
+}
+
+/**
+ * Sondeo por LOTES, no los 12 a la vez.
+ * Lanzarlos todos en paralelo saturaba CPU y disco (varios pesan 40–95 MB),
+ * y los últimos en arrancar agotaban su timeout y se daban por muertos sin
+ * serlo. Con lotes de 4 la medición es fiable y además tarda menos.
+ */
+const PROBE_BATCH = 4;
+export async function scanEngines(): Promise<EngineStatus[]> {
+  const res: EngineStatus[] = [];
+  for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
+    res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
+  }
+  g.__lyEngines = res;
+  return res;
+}
+
+export async function getEngines(): Promise<EngineStatus[]> {
+  return g.__lyEngines ?? (await scanEngines());
+}
+
+/**
+ * ¿Podemos usar este motor?
+ * Basta con que el binario EXISTA: el sondeo de `--version` es informativo y
+ * puede expirar por contención aunque el ejecutable funcione perfectamente.
+ * Antes se exigía `health === "ok"`, así que un timeout pasajero dejaba la
+ * vista previa desactivada el resto de la sesión.
+ */
+export function isHealthy(id: EngineId): boolean {
+  const e = g.__lyEngines?.find((x) => x.id === id);
+  if (!e) return false; // nadie escaneó todavía: no afirmamos que esté sano
+  return e.health !== "down" && !!e.path;
+}
