@@ -15,6 +15,7 @@ import { guardarCola, leerCola, reanudar, type JobPersistido } from "./queue-sto
 import { enVentanaSilenciosa, msHastaApertura, puedeArrancar } from "../shared/schedule";
 import { descargarLanzou, esLanzou, nombreSeguro, resolverLanzou } from "./lanzou";
 import { programarApagado } from "./power";
+import { esErrorDeCookies, explicarError } from "../shared/errores";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -65,6 +66,8 @@ export interface Job {
   codec?: VideoCodec;
   /** Hora a partir de la cual puede arrancar (programado). */
   startAt?: number;
+  /** Se reintentó sin cookies del navegador (su base no se pudo leer). */
+  noCookies?: boolean;
   /** Recortes por trabajo (fase 9): si están puestos mandan sobre Ajustes. */
   sponsorblock?: "off" | "marcar" | "quitar";
   sections?: string;
@@ -602,7 +605,7 @@ async function run(job: Job) {
 aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.embedMetadata, archiveFile: archiveFileFor(job.mode), profileLimit: cfg.profileLimit,
         cookies: fs.existsSync(ck) ? ck : null, ffmpegDir: ff ? path.dirname(ff) : null, ffmpegPath: ff,
         tempDir: TEMP_DIR,
-        cookiesFromBrowser: cfg.cookiesFromBrowser || null,
+        cookiesFromBrowser: job.noCookies ? null : (cfg.cookiesFromBrowser || null),
         impersonate: cfg.impersonate || null,
         limitRate: cfg.limitRate || null,
         retries: cfg.retries,
@@ -847,6 +850,22 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
       }
       job.log.push("[rate-limit] 4 intentos con espera: se rinde. Prueba a activar cookies del navegador en Ajustes.");
     }
+    // ── COOKIES ILEGIBLES (Chrome abierto / cifrado nuevo) ──
+    // «Could not copy Chrome cookie database» no es un fallo de la descarga: es
+    // que yt-dlp no puede leer la base del navegador. Antes se rendía ahí y el
+    // usuario veía un error en inglés que no explicaba nada. Ahora se reintenta
+    // UNA vez sin cookies —el 95 % del contenido público no las necesita— y solo
+    // si eso también falla se rinde, explicando qué pasa.
+    if (esErrorDeCookies(job.error) && !job.noCookies) {
+      job.noCookies = true;
+      job.log.push("[cookies] no se pudo leer la base del navegador (¿está abierto?); reintentando sin cookies");
+      job.error = undefined;
+      job.percent = 0; job.speed = 0; job.eta = "";
+      job.state = "queued";
+      job.retryAt = Date.now() + 500;
+      emit();
+      return; // finally → emit() + pump()
+    }
     // ── Reintento automático ante fallos TRANSITORIOS ──
     // (WinError 5/2 = archivo bloqueado por antivirus/indexador al renombrar,
     //  cortes del CDN, resets de conexión). Errores "honestos" (cookies,
@@ -869,7 +888,12 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
       return; // finally → emit() + pump() reprograma el reintento
     }
     job.state = "error"; job.speed = 0;
-    event("error", { id: job.id, title: job.title, error: job.error });
+    // El texto crudo se queda en el log (por si hay que pegarlo en un issue) y a
+    // la cola va la explicación en español con el arreglo.
+    job.log.push(`[error] ${job.error}`);
+    const ex = explicarError(job.error);
+    job.error = ex.arreglo ? `${ex.titulo} — ${ex.arreglo}` : ex.titulo;
+    if (job.noCookies) job.log.push("[cookies] este trabajo ya se intentó sin cookies del navegador");
     if (/no disponible/.test(job.error)) void scanEngines();
   } finally {
     emit();

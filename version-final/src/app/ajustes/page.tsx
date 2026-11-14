@@ -1,7 +1,7 @@
 "use client";
 // "/ajustes": carpeta, formatos, concurrencia, turbo aria2c, rutas de motores + panel Motor vivo, tema, sonido, atajos, reset, Acerca de.
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud, X } from "lucide-react";
+import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud, X, AlertTriangle } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Logo, Panel, Segmented, Toggle } from "@/components/ui";
 import { sfx } from "@/lib/client/sound";
@@ -120,6 +120,9 @@ export default function Ajustes() {
     setUpdating(false);
   };
   const ok = engines.filter((e) => e.health === "ok").length;
+  // ¿La carpeta vendor guardada desapareció? (típico: descomprimir el ZIP en otra ruta)
+  const vendorMalo = engines.length > 0 && engines[0].vendorConfiguradoExiste === false
+    && !!engines[0].vendorEfectivo && engines[0].vendorEfectivo !== engines[0].vendorConfigurado;
 
   const input = "mono scrim w-full min-w-0 border border-[var(--line)] px-3 py-2 text-xs outline-none sq-pill focus:border-[var(--red-line)]";
 
@@ -285,6 +288,17 @@ export default function Ajustes() {
             <option value="">desactivado</option>
             {["chrome", "edge", "firefox", "brave", "opera", "vivaldi", "chromium", "safari"].map((b) => <option key={b}>{b}</option>)}
           </select></Row>
+          {/* El error «Could not copy Chrome cookie database» es el más común de
+              todos y no se explica solo: Chrome bloquea su base mientras está
+              abierto, y desde la 127 la cifra de una forma que yt-dlp no lee. */}
+          {cfg.cookiesFromBrowser && (
+            <p className="mb-2 text-[11px] leading-relaxed" style={{ color: "var(--warn-ink)" }}>
+              Con el navegador <strong>abierto</strong> esto suele fallar («Could not copy … cookie database»): Chrome
+              bloquea su base y desde la versión 127 la cifra de un modo que yt-dlp no puede leer. Ciérralo del todo
+              antes de descargar, o mejor exporta las cookies a un archivo en la pestaña <span className="mono">Cookies</span>.
+              Si falla, Linyue reintenta la descarga sin cookies automáticamente.
+            </p>
+          )}
           <Row label="Impersonar navegador" hint="Útil contra muros anti-bot (403)"><select className={`${input} w-[148px]`} value={cfg.impersonate} onChange={(e) => set("impersonate", e.target.value)}>
             <option value="">no</option>
             {["chrome", "safari", "firefox", "edge"].map((b) => <option key={b}>{b}</option>)}
@@ -321,6 +335,21 @@ export default function Ajustes() {
           rojo = falta algo obligatorio. Los que no vienen en el ZIP se pueden añadir con su ruta o dejarlos estar.
           <span className="mono"> {ok}/{engines.length}</span> listos hoy.
         </p>
+        {/* La carpeta guardada puede apuntar a una instalación anterior: los
+            binarios del ZIP nuevo están ahí, pero nadie los mira. Se avisa y se
+            ofrece arreglarlo con un clic. */}
+        {vendorMalo && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 border p-3 text-[11px] sq-sm" style={{ borderColor: "var(--red-line)", background: "color-mix(in oklab, var(--red) 8%, transparent)" }}>
+            <AlertTriangle size={14} strokeWidth={1.8} style={{ color: "var(--red)" }} />
+            <span className="text-white/85">
+              La carpeta guardada <span className="mono">{rutaCorta(cfg.vendorDir, 2)}</span> no existe.
+              Se están usando los binarios de <span className="mono">{rutaCorta(engines[0].vendorEfectivo ?? "", 2)}</span>.
+            </span>
+            <button onClick={() => set("vendorDir", engines[0].vendorEfectivo ?? cfg.vendorDir)} className="btn btn-primary sq-pill px-3 py-1 text-[11px]">
+              Usar esta carpeta
+            </button>
+          </div>
+        )}
         <div className="grid gap-2 md:grid-cols-2">
           {engines.map((e, i) => (
             <div key={e.id} className="scrim rise flex items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>

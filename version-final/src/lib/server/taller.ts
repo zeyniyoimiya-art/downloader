@@ -12,7 +12,7 @@ import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { argsTaller, nombreSalida, porcentaje, segundosDeProgreso, type OpcionesTaller } from "@/lib/shared/taller";
+import { argsTaller, nombreSalida, porcentaje, segundosDeProgreso, type OpcionesTaller } from "../shared/taller";
 
 export interface TareaTaller extends OpcionesTaller {
   id: string;

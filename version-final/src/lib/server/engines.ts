@@ -64,6 +64,12 @@ export interface EngineStatus {
   version: string | null;
   health: Health;
   note: string;
+  /** Carpeta vendor que se está usando de verdad. */
+  vendorEfectivo?: string;
+  /** La que dice config.json (puede estar obsoleta si moviste la carpeta). */
+  vendorConfigurado?: string;
+  /** ¿La configurada existe en disco? */
+  vendorConfiguradoExiste?: boolean;
 }
 
 const g = globalThis as unknown as { __lyEngines?: EngineStatus[]; __lyMock?: boolean };
@@ -97,13 +103,44 @@ function inPath(names: string[]): string | null {
   return null;
 }
 
+/**
+ * La carpeta `vendor` que viene CON el programa (junto a la app).
+ *
+ * Es el respaldo cuando `config.json` apunta a una carpeta que ya no existe:
+ * pasa siempre que descomprimes un ZIP nuevo en otro sitio — el ajuste guardado
+ * sigue apuntando al viejo y TODOS los binarios parecen desaparecer.
+ */
+export function vendorDelPrograma(): string {
+  for (const base of [process.cwd(), path.join(process.cwd(), "..")]) {
+    const p = path.resolve(base, "vendor");
+    try { if (fs.existsSync(p)) return p; } catch {}
+  }
+  return path.resolve(process.cwd(), "vendor");
+}
+
+/** Carpetas donde se buscan los binarios, en orden: primero la tuya. */
+export function carpetasVendor(): string[] {
+  const cfg = getConfig();
+  return [...new Set([cfg.vendorDir, vendorDelPrograma()].filter(Boolean).map((d) => path.resolve(d)))];
+}
+
+/** La carpeta que se está usando de verdad: la primera que EXISTE. */
+export function vendorEfectivo(): string {
+  for (const d of carpetasVendor()) {
+    try { if (fs.existsSync(d)) return d; } catch {}
+  }
+  return vendorDelPrograma();
+}
+
 export function resolveEngine(id: EngineId): string | null {
   const def = ENGINES.find((e) => e.id === id);
   if (!def) return null; // fuera de whitelist
   const cfg = getConfig();
   const names = allowedNames(def);
   const custom = cfg.enginePaths[id];
-  const candidates = [custom, ...names.map((n) => path.join(cfg.vendorDir, n))].filter(Boolean) as string[];
+  // Ruta propia → carpeta configurada → carpeta del programa. Sin el último
+  // paso, mover la app de sitio dejaba el inventario entero en rojo.
+  const candidates = [custom, ...carpetasVendor().flatMap((dir) => names.map((n) => path.join(dir, n)))].filter(Boolean) as string[];
   for (const c of candidates) {
     const abs = path.resolve(c);
     // El nombre de archivo debe coincidir con la whitelist (evita apuntar a cualquier binario)
@@ -210,7 +247,7 @@ async function probeOne(def: EngineDef): Promise<EngineStatus> {
     version,
     // Encontrado pero sin versión = sigue siendo usable; solo es un aviso.
     health: version && !rutaFantasma ? "ok" : "warn",
-    note: version ? (notaFantasma || "Listo") : `sin versión: ${detail}`,
+    note: version ? (notaFantasma || "Listo") : `sin versión: ${detail || "no responde con " + def.versionArgs.join(" ")}`,
   };
 }
 
@@ -287,6 +324,13 @@ export async function scanEngines(): Promise<EngineStatus[]> {
     for (let i = 0; i < ENGINES.length; i += PROBE_BATCH) {
       res.push(...(await Promise.all(ENGINES.slice(i, i + PROBE_BATCH).map(probeOne))));
     }
+    // Se anota en cada estado cuál es la carpeta efectiva, para que la UI pueda
+    // avisar de que el ajuste guardado apunta a otro sitio.
+    const cfg = getConfig();
+    const efectiva = vendorEfectivo();
+    let existe = false;
+    try { existe = fs.existsSync(cfg.vendorDir); } catch {}
+    for (const e of res) { e.vendorEfectivo = efectiva; e.vendorConfigurado = cfg.vendorDir; e.vendorConfiguradoExiste = existe; }
     g.__lyEngines = res;
     return res;
   })();

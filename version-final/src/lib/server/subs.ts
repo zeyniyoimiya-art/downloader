@@ -13,7 +13,7 @@ import { MOCK } from "./engines";
 import {
   nuevosIds, parseListado, podarVistos, proximaRevision, tocaRevisar, urlDesdeId,
   horasValidas, type Sub,
-} from "@/lib/shared/subs";
+} from "../shared/subs";
 
 const SUBS_FILE = path.join(DATA_DIR, "subs.json");
 let cache: Sub[] | null = null;

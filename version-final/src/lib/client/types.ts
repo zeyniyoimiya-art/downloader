@@ -10,7 +10,7 @@ export interface JobView {
   /** Programado: instante (ms) en el que puede arrancar (fase 8). */
   startAt?: number;
 }
-export interface EngineView { id: string; exe: string; role: string; optional: boolean; path: string | null; version: string | null; health: "ok" | "warn" | "down"; note: string }
+export interface EngineView { id: string; exe: string; role: string; optional: boolean; path: string | null; version: string | null; health: "ok" | "warn" | "down"; note: string; vendorEfectivo?: string; vendorConfigurado?: string; vendorConfiguradoExiste?: boolean }
 export interface HistoryView { id: string; url: string; title: string; author: string; date: string; source: string; format: string; size: number; duration: number; path: string; thumbnail: string; engine: string; mode: string; createdAt: number }
 export interface ConfigView {
   outputDir: string; vendorDir: string; enginePaths: Record<string, string>; audioFormat: string; videoFormat: string; videoQuality: string;

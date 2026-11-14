@@ -151,6 +151,8 @@ Micro-interacciones que sí quedan (todas respetan `prefers-reduced-motion`):
 | Síntoma | Causa | Arreglo |
 | --- | --- | --- |
 | Un motor aparece en ámbar | El binario existe pero `--version` no contestó a tiempo | Revisa `./vendor` y pulsa *Re-escanear* |
+| Todos los motores en rojo tras cambiar de carpeta | `config.json` guarda la carpeta `vendor` de la instalación anterior | Ajustes → *Motor vivo* → **Usar esta carpeta** (o borra la ruta) |
+| «Could not copy Chrome cookie database» | Chrome abierto, o Chrome 127+ cifra las cookies de un modo que yt-dlp no lee | Se reintenta **sin cookies** solo; si insiste, cierra el navegador del todo o exporta `cookies.txt` |
 | Todo aparece «simulado» | `yt-dlp` no detectado | Copia los `.exe` a `./vendor` o fija la ruta en Ajustes |
 | «Sign in to confirm» / edad | Falta sesión | `/cookies` → pega `cookies.txt` → **Probar sesión** |
 | Instagram devuelve vacío | Falta sesión o modo equivocado | Usa el modo *Perfil completo* |
