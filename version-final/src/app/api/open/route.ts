@@ -67,9 +67,11 @@ export async function POST(req: Request) {
     // Un solo sitio decide el comando (y con el `/select,…` bien formado):
     // antes Explorer abría Documentos porque recibía `/select,` y la ruta como
     // dos argumentos distintos.
-    const r = abrirEnSistema(target, seleccionar);
+    const r = await abrirEnSistema(target, seleccionar);
     if (!r.ok) return Response.json({ error: r.error }, { status: 404 });
-    return Response.json({ ok: true, abierto: r.destino, aviso: r.aviso ?? (plan.tipo === "carpeta" ? plan.aviso : undefined) });
+    // `comando` viaja en la respuesta: si algún día vuelve a fallar en un
+    // Windows raro, se ve exactamente qué se ejecutó.
+    return Response.json({ ok: true, abierto: r.destino, comando: r.comando, aviso: r.aviso ?? (plan.tipo === "carpeta" ? plan.aviso : undefined) });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "No se pudo abrir" }, { status: 500 });
   }

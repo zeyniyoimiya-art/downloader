@@ -176,6 +176,6 @@ export async function abrirSalida(id: string): Promise<{ ok: boolean; error?: st
   // Mismo helper que el resto de la app: `spawn("explorer", ["/select,", ruta])`
   // con DOS argumentos hacía que Explorer ignorara el archivo y abriera
   // Documentos. Y un spawn fallido aquí tumbaba el servidor.
-  const r = abrirEnSistema(t.salida, true);
+  const r = await abrirEnSistema(t.salida, true);
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }

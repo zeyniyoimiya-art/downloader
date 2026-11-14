@@ -310,7 +310,7 @@ export default function Home() {
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button onClick={download} disabled={busy || !links.length} className="btn btn-primary h-12 px-6 sq-pill">{busy ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} strokeWidth={1.75} className="ico" />}Descargar</button>
           <button onClick={preview} disabled={!links.length} className="btn btn-glass h-12 px-5 sq-pill"><Eye size={18} strokeWidth={1.5} className="ico" />Vista previa</button>
-          <button onClick={() => { sfx.pop(); fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: "{}" }); }} className="btn btn-glass h-12 px-5 sq-pill"><FolderOpen size={18} strokeWidth={1.5} className="ico" />Abrir carpeta</button>
+          <button onClick={async () => { sfx.pop(); const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: "{}" }); if (!r.ok) { const d = await r.json().catch(() => ({})); toast({ kind: "err", title: "No se pudo abrir la carpeta", body: d.error ?? "El sistema no dejó abrir el explorador." }); } }} className="btn btn-glass h-12 px-5 sq-pill"><FolderOpen size={18} strokeWidth={1.5} className="ico" />Abrir carpeta</button>
           <span className="muted ml-auto text-xs">⌘/Ctrl + Enter</span>
         </div>
         <p className="muted mt-4 text-xs">

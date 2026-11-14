@@ -272,7 +272,7 @@ y la 11 con el ZIP tal como lo descarga el usuario.
 | 4 | Suscripciones muertas: `spawn …/vendor/yt-dlp ENOENT` | `lib/server/subs.ts` con ruta fija al binario | `resolveEngine("yt-dlp")` |
 | 5 | Playlists con la ruta como título en Recientes | `lib/server/jobs.ts` | `tituloDeArchivo()` |
 | 6 | «Re-bajar» decía «Re-bajando» aunque fallara | `app/recientes/page.tsx` | se mira `r.ok` y el mensaje del servidor |
-| 7 | *Abrir carpeta* del Taller abría **Documentos** | `lib/server/taller.ts` lanzaba `["/select,", ruta]` como dos argumentos | `abrir-sistema.ts` con la sintaxis correcta por SO |
+| 7 | *Abrir carpeta* no abría nada (o abría **Documentos**), sobre todo con nombres con espacios | dos trampas de Windows: `["/select,", ruta]` son dos argumentos, y `["/select,"+ruta]` con espacios tampoco funciona porque Node entrecomilla el argumento completo | `abrir-sistema.ts`: comillas **dentro** del argumento (`/select,"C:\…\a b.mp4"`) + `windowsVerbatimArguments: true`, plan B por `cmd /c start`, y el comando ejecutado viaja en la respuesta para diagnosticar |
 | 8 | Ajustes se salía de la pantalla en móvil (390 px) y la consola soltaba avisos de `navigator.vibrate` | `max-w-[42%]` sin `min-w-0`; vibración sin interacción | `basis-[38%]` + `min-w-0`; `userActivation` antes de vibrar |
 
 Extra: todos los `spawn` de «lanzar y olvidarse» (`shutdown`, `taskkill`,
