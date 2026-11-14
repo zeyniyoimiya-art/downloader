@@ -21,8 +21,23 @@ export default function Recientes() {
   const [playing, setPlaying] = useState<string | null>(null);
   const [mediaErr, setMediaErr] = useState<string | null>(null);
   const [scrollY, setScrollY] = useState(0);
+  const [reparando, setReparando] = useState(false);
 
-  const load = () => fetch("/api/history").then((r) => r.json()).then(setItems);
+  const load = (revisar = false) => fetch(`/api/history${revisar ? "?revisar=1" : ""}`).then((r) => r.json()).then(setItems);
+
+  // «Reconectar»: repasa el historial y corrige las rutas que se quedaron
+  // viejas (otra carpeta de salida, nombre que el motor escribió distinto…).
+  // Antes la tarjeta decía «el archivo ya no está» con el archivo delante.
+  const reparar = async () => {
+    setReparando(true); sfx.pop();
+    try {
+      const r = await fetch("/api/history", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: "{}" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) toast({ kind: "err", title: "No se pudo revisar", body: d.error });
+      else toast({ kind: d.corregidas ? "ok" : "info", title: d.corregidas ? "Rutas corregidas" : "Todo en su sitio", body: d.mensaje });
+      await load(true);
+    } finally { setReparando(false); }
+  };
   useEffect(() => { void load(); }, []);
   useEffect(() => {
     const on = () => setScrollY(scrollY0());
@@ -86,6 +101,9 @@ export default function Recientes() {
         </label>
         <select value={site} onChange={(e) => setSite(e.target.value)} className="btn btn-glass px-3 py-2 text-sm sq-pill" aria-label="Filtrar por sitio">{sites.map((s) => <option key={s}>{s}</option>)}</select>
         <select value={fmt} onChange={(e) => setFmt(e.target.value)} className="btn btn-glass px-3 py-2 text-sm sq-pill mono" aria-label="Filtrar por formato">{fmts.map((s) => <option key={s}>{s}</option>)}</select>
+        <button onClick={reparar} disabled={reparando} className="btn btn-glass px-3 py-2 text-sm sq-pill" aria-label="Revisar rutas del historial" title="Busca en la carpeta de salida los archivos que el historial da por perdidos y corrige su ruta">
+          <RotateCcw size={14} className={reparando ? "animate-spin" : "ico"} /><span className="hidden sm:inline">{reparando ? "Revisando…" : "Reconectar"}</span>
+        </button>
       </Panel>
 
       {items === null ? (

@@ -78,7 +78,7 @@ describe("comandoPara (macOS y Linux)", () => {
   });
 
   it("Linux: xdg-open abre la carpeta contenedora", () => {
-    expect(comandoPara("linux", "/home/yo/salida/v.mp4", true)).toEqual({ cmd: "xdg-open", args: ["/home/yo/salida"], opciones: {} });
+    expect(comandoPara("linux", "/home/yo/salida/v.mp4", true)).toEqual({ cmd: "xdg-open", args: ["/home/yo/salida"], metodo: "xdg-open", opciones: {} });
   });
 });
 
@@ -108,11 +108,22 @@ describe("abrirEnSistema", () => {
     expect(llamadas).toHaveLength(1);
   });
 
-  it("si no existe nada, NO lanza nada y lo explica", async () => {
+  it("si el archivo y su carpeta no están, abre la carpeta más cercana que SÍ existe", async () => {
     llamadas.length = 0;
     const r = await abrirEnSistema(path.join(dir, "no", "existe", "nada.mp4"), true);
+    // Antes se devolvía error y el usuario se quedaba sin nada. Ahora abre lo
+    // más cercano que existe (la carpeta de salida, normalmente) y lo cuenta.
+    expect(r.ok).toBe(true);
+    expect(r.destino).toBe(dir);
+    expect(r.aviso).toMatch(/más cercana/i);
+    expect(llamadas).toHaveLength(1);
+  });
+
+  it("si no hay NADA cerca (solo la raíz del disco), no abre nada y lo explica", async () => {
+    llamadas.length = 0;
+    const r = await abrirEnSistema("/no-existe-linyue/a/b/c/d.mp4", true);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/no existen|ni su carpeta existen/i);
+    expect(r.error).toMatch(/no existe|no hay ninguna carpeta/i);
     expect(llamadas).toHaveLength(0); // nunca se manda a Explorer a ciegas
   });
 

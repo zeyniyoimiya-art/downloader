@@ -9,6 +9,7 @@ import { leerPermiso, pedirPermiso, refrescarPermiso, suscribirPermiso, type Per
 import type { ConfigView } from "@/lib/client/types";
 import { AUDIO_FORMATS, VIDEO_FORMATS, PHOTO_FORMATS } from "@/lib/shared/platforms";
 import { VIDEO_CODECS } from "@/lib/shared/codecs";
+import { SELLO } from "@/lib/shared/version";
 
 import type { ReactNode } from "react";
 /**
@@ -396,7 +397,7 @@ export default function Ajustes() {
       {/* Acerca de: sello discreto */}
       <Panel className="flex items-center gap-4 p-5">
         <Logo size={44} />
-        <div className="flex-1"><div className="font-semibold">Linyue Studio</div><div className="muted text-xs">Descargador universal local · sin nube, sin telemetría (Sentry y Plausible OFF)</div></div>
+        <div className="flex-1"><div className="font-semibold">Linyue Studio <span className="mono muted text-[11px] font-normal">{SELLO}</span></div><div className="muted text-xs">Descargador universal local · sin nube, sin telemetría (Sentry y Plausible OFF)</div></div>
         <div className="text-right">
           <div className="text-xs muted">hecho por</div>
           <div className="text-sm font-medium">Lin Yue <span className="inline-block rotate-[-6deg] border px-1 text-[var(--danger-ink)]" style={{ fontFamily: "serif" }}>林玥</span></div>

@@ -139,6 +139,33 @@ escuchaba ese evento. Ahora todos esos lanzamientos pasan por `proc.ts` /
 - 6 rutas recorridas con Playwright: **0 errores de consola, 0 respuestas ≥ 400**.
 - Las 6 rutas también a 390 px de ancho: **sin scroll horizontal** en ninguna.
 
+## Cuando dice «el archivo ya no está» y el archivo está
+
+La ruta del historial es una promesa, no un hecho. Puede dejar de coincidir por
+motivos normales: cambiaste la carpeta de salida, el motor sanéó el nombre a su
+manera (emoji, `｜`, `「」`), el post-proceso cambió `.m4a` por `.mp3`, o el
+archivo acabó en la carpeta del autor. Antes se comprobaba con un `existsSync`
+y la tarjeta mentía.
+
+Ahora se **busca** (`src/lib/server/rutas.ts` + `src/lib/shared/parecido.ts`):
+
+1. la ruta guardada, tal cual;
+2. la carpeta de ese archivo, comparando nombres normalizados;
+3. toda la carpeta de salida (con índice cacheado 20 s), por `[videoId]`, por
+   título o por nombre parecido con la extensión cambiada.
+
+Encontrar y ordenar: `[videoId]` manda; luego el título sin tildes/emoji; luego
+el nombre recortado. Si dos coinciden, gana el más reciente.
+
+- En **Recientes**, el botón **Reconectar** repasa el historial entero y corrige
+  las rutas desfasadas (`POST /api/history`), diciendo cuántas arregló y cuántas
+  de verdad no aparecen.
+- **Abrir carpeta** resuelve igual, y si el archivo no aparece abre la carpeta
+  más cercana que sí existe (nunca «no pasa nada»).
+- `GET /api/diagnostico` enseña versión, plataforma, carpetas, cuántos archivos
+  ve en la salida, el comando exacto que se usaría para abrir una carpeta y cómo
+  resuelve las últimas 12 entradas del historial.
+
 ## Estructura de las descargas
 
 ```

@@ -361,6 +361,21 @@ export function removeHistory(id: string) {
   histCache = null;
 }
 
+/**
+ * Corrige la ruta de una entrada (el archivo estaba en otro sitio del que se
+ * apuntó). Devuelve true si cambió algo.
+ */
+export function updateHistoryPath(id: string, ruta: string, extra?: Partial<HistoryItem>): boolean {
+  const h = getHistory();
+  const i = h.findIndex((x) => x.id === id);
+  if (i < 0) return false;
+  if (h[i].path === ruta && !extra) return false;
+  h[i] = { ...h[i], ...extra, path: ruta };
+  writeJSON(HISTORY_FILE, h);
+  histCache = null;
+  return true;
+}
+
 /** El archivo de esta entrada sigue realmente en el disco (y es un archivo). */
 export function isLiveFile(h: HistoryItem): boolean {
   try {

@@ -298,3 +298,47 @@ Los únicos códigos 400 que quedan son los deliberados: `POST /api/cookies` con
 texto basura y `PUT /api/config` con la carpeta de salida vacía. Un `404` existe
 también a propósito: abrir un archivo que ya no está en el disco, que ahora se
 explica con «Ese archivo ya no está en el disco».
+
+
+---
+
+## 9. Fase 12 · «el archivo está, pero dice que no»
+
+El usuario reportó dos cosas que resultaron ser la misma: *Abrir carpeta* no
+hacía nada y varias tarjetas decían «El archivo ya no está en esa ruta» con el
+archivo delante, dentro de su carpeta de Linyue.
+
+### La causa
+
+`/api/history` comprobaba la existencia con `fs.statSync(h.path)`. Si la ruta
+guardada estaba desfasada —otra carpeta de salida, el nombre saneado de otra
+forma por el motor, `.m4a` convertido a `.mp3`, el archivo movido a la carpeta
+del autor—, la respuesta era «no existe», la tarjeta avisaba en falso y *Abrir
+carpeta* recibía una ruta muerta.
+
+### Lo que se hizo
+
+| Pieza | Qué hace |
+| --- | --- |
+| `lib/shared/parecido.ts` | Normaliza nombres (tildes, emoji, `「」`, `｜`) y puntúa si un archivo del disco es el del historial: 100 nombre exacto · 96 `[videoId]` · 90 mismo título · 72 nombre recortado; penaliza cambio de extensión |
+| `lib/server/rutas.ts` | `resolverRutaReal`: ruta exacta → su carpeta → índice de la carpeta de salida (recursivo, 4 niveles, 20 000 archivos, caché 20 s, ignora `.part`/`.ytdl`). `primerAncestroExistente` para abrir «lo más cercano que existe» |
+| `/api/history` | Devuelve la ruta REAL en `path`, más `rutaGuardada`, `existe`, `motivo` (`exacta`/`id`/`titulo`/`parecido`) y `corregida`. Deduplica por ruta real |
+| `POST /api/history` | Botón **Reconectar** de Recientes: repara las rutas malas y dice cuántas |
+| `/api/open` | Resuelve el archivo antes de abrir; corrige el historial al vuelo; si no aparece, abre la carpeta más cercana con aviso (antes: 404 seco) |
+| `lib/server/abrir-sistema.ts` | TRES métodos en Windows (`explorer.exe` verbatim → `cmd /c start` → PowerShell `Start-Process`), y la respuesta dice cuál funcionó (`metodo`) |
+| `/api/diagnostico` | Versión, plataforma, carpetas, archivos vistos, comando de apertura y resolución de las últimas 12 entradas |
+| Ajustes | Sello `v1.3.0 · 2026-11-14` para poder descartar que se está ejecutando el ZIP anterior |
+
+### Verificación
+
+```
+tsc 0 · eslint 0 · vitest 381 en 15 archivos · next build ✓
+
+Historial con rutas rotas a propósito (C:\Users\Zenith\… que no existe aquí):
+  aaaa1111  exacta   → /tmp/real2/out/Madonna/Audio/Madonna Vs Sickick - Frozen […].m4a   ✔
+  bbbb2222  titulo   → /tmp/real2/out/张杰/Audio/他不懂 (抖音DJ版) ….mp3  (emoji + otra extensión) ✔
+  cccc3333  no aparece → se avisa y se abre la carpeta de salida ✔
+
+POST /api/history → {revisadas:3, corregidas:2, perdidas:1} y history.json reescrito.
+Playwright: 3 tarjetas, abrir carpeta, Reconectar · 0 errores de consola · 0 respuestas ≥ 400.
+```
