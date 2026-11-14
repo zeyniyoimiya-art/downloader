@@ -292,6 +292,33 @@ existe» para `Unsupported URL` (ahora es **«Ningún motor sabe leer ese link»
 el plan B de Spotify ejecutándose *también* cuando el plan B de Apple ya había
 funcionado (dejaba el trabajo en error con el archivo ya en disco).
 
+## Fase 15: cuando el sitio no tiene el formato pedido
+
+Dos cosas que salieron de probar links reales:
+
+**1. «Facebook baja en MP4 pero en ORIGINAL dice que el formato no existe».**
+`ORIGINAL` sólo existe en modo **Fotos** (`PHOTO_FORMATS`), y ese modo sobre un
+post de vídeo acaba pidiendo a yt-dlp un formato que Facebook no lista. Ahora,
+cuando el motor responde `Requested format is not available` o
+`No video formats found`:
+
+- se **reintenta una vez** con el mejor formato disponible
+  (`-f b/bv*+ba/best`) y `--no-check-formats` (la comprobación previa es justo
+  la que falla cuando el sitio responde a medias);
+- si el reintento tampoco puede, el error **dice qué ofrece el sitio**
+  (`— Ese sitio ofrece: mp4 1920, mp4 1280, mp4 640, m4a audio`), en vez de
+  dejar al usuario adivinando.
+
+**2. `Unsupported URL` con una URL de login dentro** ya no se anuncia como «ningún
+motor sabe leer ese link». Facebook, Instagram y Google devuelven su página de
+acceso y yt-dlp lo reporta literalmente así:
+
+```
+ERROR: Unsupported URL: https://www.facebook.com/login/?next=https%3A%2F%2Fwww.facebook.com%2Fpermalink.php…
+```
+
+Eso es **falta de sesión** y ahora se explica como tal (Cookies → navegador).
+
 ## Estructura de las descargas
 
 ```

@@ -377,6 +377,55 @@ function falloSpotifyDe(job: Job, original: string): Error {
   return new Error(detalle ? `Spotify: ${detalle}` : `Spotify no entregó el audio: ${original.slice(0, 200)}`);
 }
 
+/**
+ * Segundo intento cuando el sitio no tiene el formato pedido.
+ *
+ * Caso real: un post de Facebook bajaba en MP4 pero fallaba en «ORIGINAL» con
+ * «Requested format is not available» (Facebook sirve un único MP4 y su lista de
+ * formatos no siempre responde). En vez de dar el trabajo por perdido, se repite
+ * con el mejor formato disponible y sin comprobar la lista antes.
+ */
+export function argsSinFiltro(args: string[]): string[] {
+  const out = [...args];
+  const i = out.indexOf("-f");
+  if (i >= 0 && i + 1 < out.length) out[i + 1] = "b/bv*+ba/best";
+  else {
+    const fin = out.indexOf("--");
+    out.splice(fin >= 0 ? fin : out.length, 0, "-f", "b/bv*+ba/best");
+  }
+  if (!out.includes("--no-check-formats")) {
+    const fin2 = out.indexOf("--");
+    out.splice(fin2 >= 0 ? fin2 : out.length, 0, "--no-check-formats");
+  }
+  return out;
+}
+
+/**
+ * Lista corta de lo que el sitio ofrece de verdad («mp4 720x1280, mp4 360p…»).
+ *
+ * Sólo se llama cuando el motor ya falló por formato: sirve para que el error
+ * diga qué SÍ hay en vez de dejar al usuario adivinando.
+ */
+export function listaDeFormatos(salida: string): string {
+  const vistos: string[] = [];
+  for (const l of salida.split(/\r?\n/)) {
+    // Filas de `yt-dlp -F`: «137  mp4  1920x1080  1080p  │  ~2.3GiB │ video only»
+    const m = l.match(/^\s*\d+\s+(\w+)\s+(\d{2,5}x\d{2,5}|audio)\b/);
+    if (!m) continue;
+    const etiqueta = `${m[1]} ${m[2]}`.replace(/x\d+$/, "").trim();
+    if (!vistos.includes(etiqueta)) vistos.push(etiqueta);
+    if (vistos.length >= 6) break;
+  }
+  return vistos.join(", ");
+}
+
+async function formatosDelSitio(url: string): Promise<string> {
+  try {
+    const salida = await runCapture("yt-dlp", ["-F", "--no-warnings", "--", url], 25000);
+    return listaDeFormatos(salida);
+  } catch { return ""; }
+}
+
 function spawnEngine(id: EngineId, args: string[]): ChildProcess {
   const bin = resolveEngine(id);
   if (!bin) throw new Error(`Motor ${id} no disponible`);
@@ -873,9 +922,8 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
       const args = nativo ? null : buildArgs(job.engine, detect(job.url) as Detected, opcionesMotor);
       if (args) {
         job.state = "running"; emit();
-        try {
-        await new Promise<void>((resolve, reject) => {
-        const p = spawnEngine(job.engine, args);
+        const lanzar = (argv: string[]): Promise<void> => new Promise<void>((resolve, reject) => {
+        const p = spawnEngine(job.engine, argv);
         mgr.procs.set(job.id, p);
         let buf = "";
         const decOut = new StringDecoder("utf8"), decErr = new StringDecoder("utf8");
@@ -931,6 +979,18 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
           reject(new Error(job.log.filter((l) => /error/i.test(l)).pop() || `El motor terminó con código ${code}`));
         });
         });
+        try {
+          try {
+            await lanzar(args);
+          } catch (e) {
+            // El sitio no tiene el formato pedido: se reintenta con el mejor.
+            const msg = e instanceof Error ? e.message : String(e);
+            const sinFormato = /requested format is not available|no video formats found|format is not available|no formats found/i.test(msg);
+            if (!sinFormato || job.engine !== "yt-dlp" || job.files.length) throw e;
+            job.log.push(`[motor] el formato pedido no está en este sitio (${msg.slice(0, 90)}); reintento con el mejor disponible`);
+            emit();
+            await lanzar(argsSinFiltro(args));
+          }
         } catch (e) {
           // ── PLAN B DE SPOTIFY ───────────────────────────────────────────
           // spotdl pide metadatos a Spotify y baja el audio de YouTube. Si lo
@@ -952,7 +1012,15 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
             // spotdl muere con un error opaco de PyInstaller. Antes el trabajo
             // quedaba en error sin pista de qué pasaba. Ahora se intenta la vía
             // directa: oEmbed + búsqueda en YouTube + yt-dlp.
-            if (job.engine !== "spotdl") throw e;
+            if (job.engine !== "spotdl") {
+              // Error de formato: se le dice al usuario qué ofrece el sitio.
+              const m0 = e instanceof Error ? e.message : String(e);
+              if (/requested format is not available|no video formats found|no formats found/i.test(m0)) {
+                const hay = await formatosDelSitio(job.url);
+                if (hay) throw new Error(`${m0.slice(0, 140)} — Ese sitio ofrece: ${hay}. Elige uno de esos formatos.`);
+              }
+              throw e;
+            }
             const motivo = e instanceof Error ? e.message : String(e);
             job.log.push(`[spotify] spotdl falló (${motivo.slice(0, 120)}); probando la vía directa`);
             const rescatado = await rescatarSpotify(job, opcionesMotor);

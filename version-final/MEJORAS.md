@@ -435,3 +435,21 @@ También se separó «iTunes no conoce ese id» de «no está en YouTube»: ante
 ```
 tsc 0 · eslint 0 · vitest 401 en 17 archivos · next build ✓ · v1.5.0
 ```
+
+---
+
+## Fase 15 · «el formato no existe» y «no sé leer ese link»: dos mensajes que sobraban
+
+| Síntoma real | Causa | Arreglo |
+| --- | --- | --- |
+| El mismo post de Facebook baja en MP4 y falla en **ORIGINAL** con «Ese formato no existe» | `ORIGINAL` sólo vive en modo Fotos; sobre un vídeo, yt-dlp recibe una lista de formatos que el sitio no confirma y contesta `Requested format is not available` | reintento automático con `-f b/bv*+ba/best` + `--no-check-formats`; si aun así falla, el error lista **qué formatos ofrece el sitio** (`listaDeFormatos`) |
+| Facebook/Instagram devolvían «Ningún motor sabe leer ese link» | el sitio redirige al **login** y yt-dlp lo reporta como `Unsupported URL: https://www.facebook.com/login/?next=…` | nueva detección: URL con `/login`, `login?next`, `/accounts/login`, `consent.`… → causa `sesion` («El sitio pide una cuenta») |
+
+Verificado: YouTube sigue bajando igual tras el refactor del lanzamiento
+(`-f` + reintento comparten el mismo `lanzar(argv)`); Facebook desde el sandbox
+ahora dice **«El sitio pide una cuenta (sesión)»** en vez de «ningún motor sabe
+leer ese link».
+
+```
+tsc 0 · eslint 0 · vitest 407 en 17 archivos · next build ✓ · v1.5.1
+```

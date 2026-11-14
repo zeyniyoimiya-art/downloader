@@ -88,3 +88,14 @@ describe("motor colgado (vigilante)", () => {
     expect(e.arreglo).toMatch(/8 minutos/);
   });
 });
+
+describe("Facebook que manda al login", () => {
+  it("es «pide sesión», no «ningún motor sabe leer ese link»", () => {
+    const msg = "ERROR: Unsupported URL: https://www.facebook.com/login/?next=https%3A%2F%2Fwww.facebook.com%2Fpermalink.php";
+    expect(explicarError(msg).causa).toBe("sesion");
+    expect(explicarError(msg).titulo).toMatch(/sesión/i);
+  });
+  it("un sitio de verdad no soportado sigue siendo sinSoporte", () => {
+    expect(explicarError("ERROR: Unsupported URL: https://sitio-raro.example/x").causa).toBe("sinSoporte");
+  });
+});

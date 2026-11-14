@@ -36,6 +36,11 @@ export function causaDeError(msg: string | undefined | null): ErrorExplicado["ca
   if (/confirm you.?re not a bot|sign in to confirm|captcha|http error 429|too many requests/.test(m)) return "bot";
   if (/private video|members-only|join this channel|requires payment|login required|iniciar sesión/.test(m)) return "privado";
   if (/not available in your country|geo.?restrict|blocked it in your country/.test(m)) return "geo";
+  // El sitio devolvió su página de LOGIN en vez del contenido. yt-dlp lo
+  // reporta como «Unsupported URL: https://www.facebook.com/login/?next=…»,
+  // así que sin esta línea el usuario leía «ningún motor sabe leer ese link»
+  // cuando en realidad le faltaba la sesión.
+  if (/\/login|login\?next|\/signin|\/accounts\/login|accounts\.google\.com|consent\.|checkpoint/.test(m)) return "sesion";
   // «Unsupported URL» = ningún motor conoce ese sitio; NO es un formato que
   // falte (el usuario veía «ese formato no existe» en links de Apple Music).
   if (/unsupported url|is not a valid url|no suitable extractor|is not supported/.test(m)) return "sinSoporte";

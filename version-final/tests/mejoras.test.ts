@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { buildArgs, type ArgOptions } from "../src/lib/shared/args";
 import { detect, isSafeUrl, isPrivateHost } from "../src/lib/shared/platforms";
-import { formatForPart } from "../src/lib/server/jobs";
+import { argsSinFiltro, formatForPart, listaDeFormatos } from "../src/lib/server/jobs";
 import { newId, defaultConfig } from "../src/lib/server/store";
 
 const d = (u: string) => detect(u)!;
@@ -91,5 +91,46 @@ describe("BUG: ids de trabajo colisionables", () => {
   it("no se repite en 5000 generaciones", () => {
     const s = new Set(Array.from({ length: 5000 }, newId));
     expect(s.size).toBe(5000);
+  });
+});
+
+describe("reintento cuando el sitio no tiene el formato pedido", () => {
+  it("sustituye el selector y añade --no-check-formats", () => {
+    const args = ["-P", "C:\\out", "-f", "bv*+ba/b", "--merge-output-format", "mp4", "--", "https://www.facebook.com/share/p/1EEQ6ttVWJ/"];
+    const alt = argsSinFiltro(args);
+    expect(alt).toContain("-f");
+    expect(alt[alt.indexOf("-f") + 1]).toBe("b/bv*+ba/best");
+    expect(alt).toContain("--no-check-formats");
+    // el "--" y la URL siguen al final, y no se duplica el flag
+    expect(alt.indexOf("--no-check-formats")).toBeLessThan(alt.indexOf("--"));
+    expect(argsSinFiltro(alt).filter((x) => x === "--no-check-formats")).toHaveLength(1);
+  });
+
+  it("sin selector previo lo añade antes del «--»", () => {
+    const alt = argsSinFiltro(["-P", "C:\\out", "--", "https://x/y"]);
+    expect(alt[alt.indexOf("-f") + 1]).toBe("b/bv*+ba/best");
+    expect(alt[alt.length - 1]).toBe("https://x/y");
+  });
+});
+
+describe("listaDeFormatos", () => {
+  it("resume las filas de yt-dlp -F sin repetir", () => {
+    const salida = [
+      "[info] Available formats for abc:",
+      "ID  EXT   RESOLUTION FPS CH │   FILESIZE   TBR PROTO │ VCODEC        VBR ACODEC      ABR",
+      "──────────────────────────────────────────────────────────────────────────────",
+      "sb0 mhtml 48x27        0    │                  │ mhtml                   storyboard",
+      "137 mp4   1920x1080   25    │  120.00MiB 2500k https │ avc1.640028  2500k video only",
+      "136 mp4   1280x720    25    │   60.00MiB 1200k https │ avc1.4d401f  1200k video only",
+      "136 mp4   1280x720    25    │   60.00MiB 1200k https │ avc1.4d401f  1200k video only",
+      "18  mp4   640x360     25    │   20.00MiB  400k https │ avc1.42001E        mp4a.40.2",
+      "140 m4a   audio            │    3.20MiB  128k https │ audio only        mp4a.40.2",
+    ].join("\n");
+    const r = listaDeFormatos(salida);
+    expect(r).toBe("mp4 1920, mp4 1280, mp4 640, m4a audio");
+  });
+
+  it("sin formatos devuelve vacío (no inventa)", () => {
+    expect(listaDeFormatos("ERROR: Unsupported URL")).toBe("");
   });
 });
