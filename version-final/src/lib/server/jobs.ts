@@ -565,18 +565,21 @@ async function bajarVistaPreviaApple(
  * con FairPlay). Antes la app se limitaba a decir «ese formato no existe».
  * Ahora: metadatos de iTunes → canción en YouTube → si no, vista previa.
  */
-async function rescatarApple(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
+async function rescatarApple(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<void> {
   const ids = idApple(job.url);
-  if (!ids) { job.log.push("[apple] no se reconoce el link de Apple Music"); return false; }
+  if (!ids) throw new Error("Apple Music: el link no trae una canción ni un álbum reconocible");
 
   if (ids.tipo === "playlist" || ids.tipo === "artist") {
-    job.log.push(`[apple] un link de ${ids.tipo} no se puede leer: iTunes no da las pistas sin token de MusicKit`);
-    return false;
+    throw new Error(`Apple Music: iTunes no entrega las pistas de un link de ${ids.tipo} sin token de MusicKit; abre el link de la canción concreta`);
   }
 
   const limite = Math.max(1, Math.min(30, getConfig().profileLimit || 10));
   const pistas = await pistasApple(job.url, limite);
-  if (!pistas.length) { job.log.push("[apple] iTunes no devolvió metadatos para ese link"); return false; }
+  if (!pistas.length) {
+    // Ojo: esto NO es «no está en YouTube». Es que Apple/iTunes no conoce el
+    // id. Mezclarlo mandaba al usuario a buscar donde no era.
+    throw new Error("Apple Music: iTunes no devolvió datos de ese link (¿la canción se retiró del catálogo o cambió el id?)");
+  }
   job.log.push(`[apple] iTunes: ${pistas.length} pista(s), p. ej. «${pistas[0].artist} - ${pistas[0].title}»`);
 
   let bajadas = 0;
@@ -593,7 +596,9 @@ async function rescatarApple(job: Job, opciones: Parameters<typeof buildArgs>[2]
       break;
     }
   }
-  return bajadas > 0 && job.files.length > 0;
+  if (!bajadas || !job.files.length) {
+    throw new Error("Apple Music: no se encontró la canción en YouTube y Apple no publica vista previa de ese tema");
+  }
 }
 
 export function runCapture(
@@ -939,10 +944,7 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
           // No es un fallo de configuración, así que se va por la vía directa.
           if (esUrlApple(job.url)) {
             job.log.push(`[apple] los motores no leen Apple Music (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}); vía directa`);
-            const okApple = await rescatarApple(job, opcionesMotor);
-            if (!okApple) {
-              throw new Error("Apple Music: la canción no se encontró en YouTube y Apple no publica vista previa de este tema");
-            }
+            await rescatarApple(job, opcionesMotor); // lanza con el motivo exacto
           } else {
             // ── PLAN B DE SPOTIFY ─────────────────────────────────────────
             // spotdl pide metadatos a Spotify y baja el audio de YouTube. Si lo

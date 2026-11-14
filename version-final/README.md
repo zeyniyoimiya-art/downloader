@@ -257,6 +257,20 @@ Lo que sí se puede hacer, y ahora hace la app:
 También se aceptan links de **álbum** (`/album/…/1742176034`): iTunes devuelve
 las pistas y se intenta cada una (hasta 30), con la vista previa como red.
 
+### Lo mismo, con una canción que YouTube sí entrega en este sandbox
+
+```
+https://music.apple.com/bo/album/never-gonna-give-you-up/1559885420?i=1559885421
+  [apple] iTunes: 213 s, «Rick Astley - Never Gonna Give You Up»
+  [apple] elegido: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)
+  [apple] rescatado: 1 archivo(s)        ← sin aviso, sin vista previa
+  Rick Astley/Audio/… [dQw4w9WgXcQ].mp3 → 213,1 s · 8,2 MB · title/artist ✔
+```
+
+Es decir: el 30 s no es una limitación del código, es lo que queda cuando
+YouTube se niega a servir **ese** vídeo. Con la misma versión de la app, el mismo
+botón, la canción completa se baja cuando YouTube la entrega.
+
 ### Verificado con el link que falló
 
 ```

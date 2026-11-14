@@ -418,7 +418,19 @@ ffprobe: 30.01 s · mp3 + mjpeg attached_pic · title/artist/album/genre/date �
 ```
 
 En una IP doméstica el mismo código baja la **canción completa** desde YouTube;
-aquí el paso 2 se corta por el bloqueo de bot y entra el paso 3.
+aquí el paso 2 se corta por el bloqueo de bot y entra el paso 3. Comprobado con
+la misma app en el mismo sandbox, con un tema cuyo vídeo YouTube sí entrega:
+
+```
+Apple: /album/never-gonna-give-you-up/1559885420?i=1559885421  (213 s)
+  → [apple] elegido: Rick Astley - Never Gonna Give You Up (Official Video)
+  → 213,1 s · 8,2 MB · sin aviso de vista previa
+Apple: /song/fake-love-orchestral-version-remix/1742176281  (YouTube: «not a bot»)
+  → 30,0 s · 776 KB · aviso de vista previa
+```
+
+También se separó «iTunes no conoce ese id» de «no está en YouTube»: antes un
+`?i=` inventado decía que la canción no estaba en YouTube, que era falso.
 
 ```
 tsc 0 · eslint 0 · vitest 401 en 17 archivos · next build ✓ · v1.5.0
