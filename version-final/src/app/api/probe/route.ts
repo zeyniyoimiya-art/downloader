@@ -122,6 +122,10 @@ export async function POST(req: Request) {
     args.push(...browserUAFor(d.url)); // Bilibili WAF: sin UA de navegador no devuelve formatos
     const ck = cookieFile(d.platform);
     if (fs.existsSync(ck)) args.push("--cookies", ck);
+    // Deno para el desafío de JavaScript de YouTube: sin él la sonda se queda
+    // sin calidades (o sin audio) y la ficha miente.
+    const deno = resolveEngine("deno");
+    if (deno) args.push("--js-runtimes", `deno:${deno}`);
     // 90 s, no 30: cuando hay un proveedor de PO Tokens instalado (bgutil), cada
     // sondeo lanza además su propio proceso de JS para generar el token, y con
     // varias sondas en paralelo eso pasa de 30 s con facilidad. Con 30 s las

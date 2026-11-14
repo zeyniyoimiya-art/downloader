@@ -166,6 +166,73 @@ el nombre recortado. Si dos coinciden, gana el más reciente.
   ve en la salida, el comando exacto que se usaría para abrir una carpeta y cómo
   resuelve las últimas 12 entradas del historial.
 
+## Fase 13: links universales y la verdad por delante
+
+«Que acepte cualquier link» no se arregla con una lista de sitios: eso es lo que
+ya hacía (yt-dlp + gallery-dl + spotdl + 20 motores). Se arregla con **mensajes
+que digan la causa real** y con no rendirse al primer fallo. Para comprobarlo se
+lanzó una batería de **20 links reales** contra la app (no mocks), y esto es lo
+que salió, sin maquillar:
+
+### Lo que se arregló (fallos nuestros, no del sitio)
+
+| # | Lo que decía la app | Lo que pasaba de verdad | Arreglo |
+| --- | --- | --- | --- |
+| 1 | «Falta un motor en `vendor`» ante un MP3 o un pin de Pinterest que **no existían** | la regex `not ?found` de `causaDeError` atrapaba cualquier 404 y lo llamaba «motor» | causas nuevas: `noexiste` · `sesion` · `bloqueo` · `proveedor`, con la regex de `motor` solo para `ENOENT`/`WinError 2` de verdad |
+| 2 | Un `.ogv` descargado se perdía con «Conversion failed!» | yt-dlp ya había bajado el archivo; sólo falló el pase a mp4 y se descartaba todo | si «Conversion failed» y hay archivos vivos → **listo** + aviso «se guardó el original (OGV)» |
+| 3 | Spotify: error opaco de PyInstaller y trabajo colgado | spotdl baja el audio de YouTube; si YouTube lo rechaza, muere con un traceback | **plan B propio** (ver abajo) + `--ffmpeg <ruta>` completa + Deno como runtime JS + `PATH` con `vendor` |
+| 4 | Un trabajo de YouTube con «not a bot» reintentaba 4 veces (30 s → 300 s) y **congelaba el host** | backoff aplicado a un error que no se arregla esperando | los bloqueos de bot van a **1 intento** y sólo penalizan 8 s |
+| 5 | Spotify podía terminar «listo» con 0 archivos | spotdl sale con código 0 sin bajar nada | si no hay archivos → plan B; si el plan B tampoco → **error** con la causa real |
+| 6 | Un motor colgado dejaba el trabajo «en curso» para siempre (visto: 17 min en *Processing query*) | no había vigilante | si el motor no imprime **nada en 8 min**, se mata y se explica |
+| 7 | gallery-dl podía crear nombres inválidos en Windows (`" onmouseover="…`, `:` en un título) | el nombre lo pone el sitio | `--windows-filenames` en gallery-dl |
+
+### Plan B de Spotify (por qué existe)
+
+```
+spotdl  →  metadatos Spotify  →  audio de YouTube  ← aquí muere si YouTube dice «no eres un bot»
+Linyue  →  oEmbed de Spotify (título + artista, sin claves)
+        →  yt-dlp "ytsearch5:<artista> <canción>"
+        →  puntúa cada resultado (título 55 · artista 30 · canal oficial 5 · ruido −40…)
+        →  si la nota ≥ 55, la baja con yt-dlp y escribe los metadatos y la carátula
+```
+
+La puntuación no es decorativa: en la batería, «bad guy» de Billie Eilish eligió
+primero la versión de **otro grupo** porque el título coincidía palabra por
+palabra. Ahora, si el artista no aparece ni en el título ni en el canal, el
+candidato se hunde 45 puntos y no se elige. Hay 10 tests para esto
+(`tests/spotify.test.ts`), incluidos los dos casos reales.
+
+### La batería, tal cual salió
+
+Ejecutada en el sandbox de pruebas (Linux, IP de datacenter). **La IP del sandbox
+está marcada por YouTube**: eso explica la mitad de los fallos y no se puede
+arreglar desde el código.
+
+| Link | Resultado | Por qué |
+| --- | --- | --- |
+| YouTube vídeo normal | ✅ baja | — |
+| YouTube (Shorts, Music, playlist, otros) | ⛔ «confirma que no eres un robot» | límite **por IP** del sandbox. Probados 5 *player clients* (`tv`, `ios`, `mweb`, `android_vr`, `web_safari`) con y sin Deno: todos igual. En tu PC con cookies del navegador funciona |
+| Spotify (canción) | ⚠️ canción localizada, audio no | el plan B encuentra el tema correcto y luego YouTube rechaza la descarga por lo mismo (IP) |
+| TikTok · SoundCloud · Dailymotion · YouTube Music (cuando pasa) | ✅ bajan | — |
+| MP4 / MP3 / JPG directos | ✅ bajan | — |
+| Wikimedia `.ogv` | ✅ baja el `.ogv` + aviso | ffmpeg del sistema no convierte ese contenedor; el original queda guardado |
+| Wikimedia (galería) | ✅ bajan fotos | gallery-dl; con 429 del CDN reintenta solo |
+| Vimeo (vídeo con login) · Instagram · Reddit | ⛔ «pide una cuenta (sesión)» | correcto y explicado; se resuelve con cookies |
+| Bilibili · Bandcamp | ⛔ «el sitio está bloqueando» (412/406) | cortafuegos del sitio contra IPs de datacenter |
+| Pinterest (pin borrado) · X (tweet sin vídeo) · Dailymotion (vídeo retirado) | ⛔ «ya no existe» | el contenido no está; antes culpaba a `vendor` |
+| Twitch (clip borrado) | ⛔ «ya no existe» | ídem |
+
+**Conclusión honesta:** de 20 links, 5 bajan y 5 fallan por el entorno; los otros
+10 fallan *en el sitio* (sesión, WAF, contenido borrado) y ahora lo dicen con
+esas palabras. Ningún fallo dice ya «falta un motor» cuando el motor está.
+
+### Si te sale «confirma que no eres un robot»
+
+1. Ajustes → **Cookies** → navegador (con el navegador **cerrado**), o pega tu
+   `cookies.txt` de YouTube. Es la solución de verdad en un PC normal.
+2. Si acabas de descargar mucho, espera unos minutos: es un límite temporal.
+3. Proxy/VPN en Ajustes → Red, si tu IP está marcada.
+
 ## Estructura de las descargas
 
 ```
@@ -224,6 +291,8 @@ Micro-interacciones que sí quedan (todas respetan `prefers-reduced-motion`):
 | Nada arranca de noche | Ventana silenciosa activa | Ajustes → Programador, o pon `quietEnabled: false` |
 | La isla no actualiza | SSE cortado por un proxy | Abre directo `http://127.0.0.1:4173` |
 | Lanzou falla con «cambió el formato» | El sitio cambió el HTML otra vez | Abre un issue con la URL; hay que ajustar los patrones |
+| «El motor se quedó colgado y se detuvo solo» | El motor no imprimió nada en 8 minutos | Reintenta; si se repite, otro motor o revisa proxy/red |
+| Spotify: «la canción se encontró, pero YouTube no entregó el audio» | YouTube rechazó la descarga (bot/cookies) | Ajustes → Cookies del navegador (cerrado) y reintenta: el plan B volverá a intentarlo |
 | La ficha se queda en «Inspeccionando…» | El sitio no contesta o bloquea el sondeo | Mira el aviso de la ficha: dice el motivo exacto (cookies, privado, red) |
 | «Abrir carpeta» abre Documentos | La ruta guardada ya no existe | Linyue comprueba antes y te dice «Ese archivo ya no está en el disco» |
 | La isla dice «faltan 3 motores» | Hay binarios obligatorios sin encontrar | Ajustes → *Motor vivo*: el que falta aparece en rojo con su nombre |

@@ -19,7 +19,7 @@ export interface ErrorExplicado {
   /** Qué hacer, en una frase. */
   arreglo: string;
   /** Clave estable de la causa, para decidir reintentos. */
-  causa: "cookies" | "bot" | "privado" | "geo" | "formato" | "disco" | "red" | "motor" | "otro";
+  causa: "cookies" | "bot" | "privado" | "geo" | "formato" | "disco" | "red" | "motor" | "noexiste" | "sesion" | "bloqueo" | "proveedor" | "otro";
 }
 
 /** ¿El fallo viene de no poder leer la base de cookies del navegador? */
@@ -38,8 +38,19 @@ export function causaDeError(msg: string | undefined | null): ErrorExplicado["ca
   if (/not available in your country|geo.?restrict|blocked it in your country/.test(m)) return "geo";
   if (/requested format is not available|no video formats found|unsupported url|is not a valid url/.test(m)) return "formato";
   if (/no space left|disk full|enospc|espacio insuficiente/.test(m)) return "disco";
+  // OJO: antes esta línea atrapaba «not found» en general, así que un pin de
+  // Pinterest inexistente o un 404 del sitio se anunciaban como «falta un motor
+  // en vendor». Ahora «motor» es SOLO un binario que no aparece.
+  if (/enoent|no such file or directory|cannot find the file|winerror 2|is not recognized as an internal|command not found/.test(m)) return "motor";
+  // El contenido no existe / se borró.
+  if (/http error 404|\b404\b|not found|does not exist|no longer available|requested .* could not be found|unavailable video|has been removed|no video (could be found|found|in this)|no media|nothing to download/.test(m)) return "noexiste";
+  // El sitio pide cuenta o sesión (no es lo mismo que contenido privado).
+  if (/only works when logged-?in|account authentication is required|requires? authentication|authentication is required|log ?in to|empty media response|not granting access|login required|sign in to/.test(m)) return "sesion";
+  // Bloqueo de bots/CDN a nivel de red (WAF).
+  if (/http error 41[0-9]|http error 40[36]|forbidden|access denied|cloudflare|ddos-guard|precondition failed/.test(m)) return "bloqueo";
+  // Spotify: encontró la canción pero YouTube no dio el audio.
+  if (/audioprovidererror|yt-dlp download error|spotdl.*error/.test(m)) return "proveedor";
   if (/getaddrinfo|connection|timed? ?out|network is unreachable|10054|10053|ssl/.test(m)) return "red";
-  if (/enoent|not ?found|no such file|cannot find|winerror 2/.test(m)) return "motor";
   return "otro";
 }
 
@@ -48,6 +59,15 @@ export function causaDeError(msg: string | undefined | null): ErrorExplicado["ca
  * y `arreglo` dice qué hacer.
  */
 export function explicarError(msg: string | undefined | null): ErrorExplicado {
+  // Colgado ≠ fallo del sitio: hay que decirlo con sus propias palabras.
+  if (/dejó de responder|sin avances|se quedó colgado/i.test(msg ?? "")) {
+    return {
+      causa: "otro",
+      titulo: "El motor se quedó colgado y se detuvo solo",
+      arreglo:
+        "No llegó ningún dato en 8 minutos, así que Linyue lo cortó para no bloquear la cola. Reintenta; si se repite, prueba otro motor o revisa la conexión/proxy.",
+    };
+  }
   const causa = causaDeError(msg);
   switch (causa) {
     case "cookies":
@@ -93,6 +113,30 @@ export function explicarError(msg: string | undefined | null): ErrorExplicado {
         causa,
         titulo: "Se cortó la conexión con el sitio",
         arreglo: "Comprueba tu red y reintenta; si usas proxy, revisa que responda.",
+      };
+    case "noexiste":
+      return {
+        causa,
+        titulo: "Ese contenido ya no existe en el sitio",
+        arreglo: "Comprueba el link en el navegador: puede estar borrado, ser privado o haberse movido.",
+      };
+    case "sesion":
+      return {
+        causa,
+        titulo: "El sitio pide una cuenta (sesión)",
+        arreglo: "Este contenido solo se ve con sesión iniciada. Entra en la pestaña Cookies, pega tu cookies.txt de ese sitio y reintenta.",
+      };
+    case "bloqueo":
+      return {
+        causa,
+        titulo: "El sitio está bloqueando las peticiones automáticas",
+        arreglo: "Es su cortafuegos (Cloudflare/412/406). Con cookies del navegador suele pasar; si no, prueba un proxy en Ajustes → Red o espera un rato.",
+      };
+    case "proveedor":
+      return {
+        causa,
+        titulo: "La canción se encontró, pero YouTube no entregó el audio",
+        arreglo: "YouTube pidió confirmación (bot/cookies) al buscar el audio de Spotify. Activa cookies del navegador en Ajustes y reintenta; Linyue intentará además la vía directa.",
       };
     case "motor":
       return {

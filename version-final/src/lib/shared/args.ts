@@ -27,6 +27,14 @@ export interface ArgOptions {
    */
   ffmpegPath?: string | null;
   /**
+   * Ruta al binario de Deno (el `deno.exe` del ZIP).
+   * YouTube exige hoy resolver un desafío de JavaScript para dar formatos:
+   * sin un runtime, yt-dlp avisa «No supported JavaScript runtime could be
+   * found» y se queda sin calidades (o falla el audio). Con `--js-runtimes
+   * deno:<ruta>` se le dice exactamente cuál usar.
+   */
+  denoPath?: string | null;
+  /**
    * Carpeta para parciales e intermedios. Imprescindible para que bajar el
    * audio de algo que ya bajaste como vídeo no destruya el vídeo (ver abajo).
    */
@@ -191,6 +199,8 @@ case "yt-dlp": {
         if (!["wav", "aac", "webm"].includes(o.format)) a.push("--embed-thumbnail", "--convert-thumbnails", "jpg");
       }
       if (o.ffmpegDir) a.push("--ffmpeg-location", sanitizeArg(o.ffmpegDir));
+      // Deno para el desafío de JavaScript de YouTube (ver comentario en la opción).
+      if (o.denoPath) a.push("--js-runtimes", `deno:${sanitizeArg(o.denoPath)}`);
       if (o.noRepeat) a.push("--download-archive", sanitizeArg(o.archiveFile));
       if (o.cookies) a.push("--cookies", sanitizeArg(o.cookies));
       // Cookies directamente del navegador instalado: es la única forma que
@@ -292,6 +302,10 @@ case "yt-dlp": {
       // con "FFmpeg not found" aunque ffmpeg estuviera ahí al lado.
       const ffBin = o.ffmpegPath ?? o.ffmpegDir;
       if (ffBin) a.push("--ffmpeg", sanitizeArg(ffBin));
+      // spotdl baja el audio de YouTube por dentro: si el usuario tiene
+      // cookies, se le pasan también (sin ellas YouTube contesta «confirma que
+      // no eres un robot» y el track de Spotify falla sin motivo aparente).
+      if (o.cookies) a.push("--cookie-file", sanitizeArg(o.cookies));
       if (o.noRepeat) a.push("--archive", sanitizeArg(o.archiveFile));
       return a;
     }
@@ -310,7 +324,11 @@ case "yt-dlp": {
       return a;
     }
     case "gallerydl": {
-      const a = ["-d", out, "--range", `1-${o.profileLimit}`];
+      // `--windows-filenames`: los nombres los elige el SITIO (títulos, ids…).
+      // En una prueba real salió un archivo llamado '" onmouseover="alert(...)'
+      // y otro con «:» — imposibles en Windows (la descarga fallaba con EINVAL).
+      // gallery-dl ya sabe sanear: se le pide explícitamente.
+      const a = ["-d", out, "--range", `1-${o.profileLimit}`, "--windows-filenames"];
       if (o.noRepeat) a.push("--download-archive", sanitizeArg(o.archiveFile.replace(/\.txt$/, ".gallery.sqlite")));
       if (o.cookies) a.push("--cookies", sanitizeArg(o.cookies));
       a.push("--", url);

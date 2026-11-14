@@ -80,3 +80,11 @@ describe("otras causas", () => {
     expect(explicarError("x".repeat(5000)).titulo.length).toBeLessThanOrEqual(200);
   });
 });
+
+describe("motor colgado (vigilante)", () => {
+  it("no lo confunde con falta de motor ni con el sitio", () => {
+    const e = explicarError("El motor dejó de responder (8 minutos sin avances). Se detuvo.");
+    expect(e.titulo).toMatch(/colgado/i);
+    expect(e.arreglo).toMatch(/8 minutos/);
+  });
+});

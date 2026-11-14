@@ -15,9 +15,10 @@ import { guardarCola, leerCola, reanudar, type JobPersistido } from "./queue-sto
 import { enVentanaSilenciosa, msHastaApertura, puedeArrancar } from "../shared/schedule";
 import { descargarLanzou, esLanzou, nombreSeguro, resolverLanzou } from "./lanzou";
 import { programarApagado } from "./power";
-import { esErrorDeCookies, explicarError } from "../shared/errores";
+import { causaDeError, esErrorDeCookies, explicarError } from "../shared/errores";
 import { claveSonda, guardarSonda, leerSonda, mejorAudioDe, tamanoDe } from "./probe-cache";
 import { autorDeRuta, tituloDeArchivo, tituloFinal } from "../shared/nombres";
+import { consultaDe, elegirCandidato, metadatosSpotify, type Candidato } from "./spotify";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -52,7 +53,7 @@ function cookiePairsFor(ck: string): string[] {
       .slice(0, 80);
   } catch { return []; }
 }
-import { isHealthy, MOCK, resolveEngine, scanEngines, getEngines } from "./engines";
+import { carpetasVendor, isHealthy, MOCK, resolveEngine, scanEngines, getEngines } from "./engines";
 import { addHistory, archiveFileFor, cookieFile, getConfig, inHistory, newId, reconcileArchiveFor, TEMP_DIR, type Config } from "./store";
 import { lanzarSuelto } from "./proc";
 
@@ -354,6 +355,84 @@ export function despertarCola(): void {
   pump();
 }
 
+/**
+ * PLAN B DE SPOTIFY.
+ *
+ * 1. Metadatos del track con oEmbed (público, sin credenciales).
+ * 2. Búsqueda en YouTube con yt-dlp (`ytsearch5`) y puntuación de resultados:
+ *    título, artista, canal oficial… y castigo a covers/remix/sped-up.
+ * 3. Descarga del elegido con los MISMOS ajustes que una descarga normal
+ *    (formato, carátula, metadatos, recortes…).
+ *
+ * Devuelve true si dejó archivos en `job.files`. Si no, el error original sigue
+ * su curso y el usuario ve la explicación en español.
+ */
+/** Última línea con información útil del log de un trabajo de Spotify. */
+function falloSpotifyDe(job: Job, original: string): Error {
+  // Prioridad: una línea ERROR real del motor; si no, el aviso del plan B.
+  const linea = [...job.log].reverse().find((l) => /^\s*ERROR:/i.test(l))
+    ?? [...job.log].reverse().find((l) => /AudioProviderError|download error|no se parece|sin metadatos|no devolvió resultados/i.test(l));
+  const detalle = (linea ?? "").replace(/^\s*ERROR:\s*/i, "").trim();
+  return new Error(detalle ? `Spotify: ${detalle}` : `Spotify no entregó el audio: ${original.slice(0, 200)}`);
+}
+
+async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
+  const pista = await metadatosSpotify(job.url);
+  if (!pista) { job.log.push("[spotify] sin metadatos: oEmbed no respondió"); return false; }
+  job.log.push(`[spotify] plan B: buscando «${pista.artist} - ${pista.title}» en YouTube`);
+  const deno = resolveEngine("deno");
+  const buscar = ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", "--no-playlist"];
+  if (deno) buscar.push("--js-runtimes", `deno:${deno}`);
+  buscar.push("--", `ytsearch5:${consultaDe(pista)}`);
+  let crudo = "";
+  try {
+    crudo = await runCapture("yt-dlp", buscar, 60000);
+  } catch (e) {
+    job.log.push(`[spotify] la búsqueda en YouTube falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
+    return false;
+  }
+  let entradas: Candidato[] = [];
+  try {
+    const j = JSON.parse(crudo) as { entries?: Candidato[] };
+    entradas = j.entries ?? [];
+  } catch { entradas = []; }
+  if (!entradas.length) { job.log.push("[spotify] YouTube no devolvió resultados"); return false; }
+
+  const elegido = elegirCandidato(entradas, pista);
+  if (!elegido) { job.log.push("[spotify] ningún resultado se parece lo suficiente a la canción"); return false; }
+  const url = elegido.webpage_url ?? elegido.url ?? (elegido.id ? `https://www.youtube.com/watch?v=${elegido.id}` : "");
+  const detectado = url ? detect(url) : null;
+  if (!detectado) { job.log.push("[spotify] el resultado no tiene una URL usable"); return false; }
+  job.log.push(`[spotify] elegido: ${elegido.title ?? url} (${elegido.uploader ?? "?"})`);
+
+  // La ficha del trabajo pasa a describir la canción real.
+  if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
+  if (pista.thumbnail && !job.thumbnail) job.thumbnail = pista.thumbnail;
+
+  let args: string[];
+  try {
+    args = buildArgs("yt-dlp", detectado, { ...opciones, outputDir: opciones.outputDir });
+  } catch (e) {
+    job.log.push(`[spotify] no se pudieron preparar los argumentos: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    return false;
+  }
+  let salida = "";
+  try {
+    salida = await runCapture("yt-dlp", args, 20 * 60_000);
+  } catch (e) {
+    job.log.push(`[spotify] la descarga del resultado falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
+    return false;
+  }
+  const archivos = salida.split(/\r?\n/)
+    .filter((l) => l.startsWith("LYF|"))
+    .map((l) => l.slice(4).trim())
+    .filter((f) => f && fs.existsSync(f));
+  for (const f of archivos) if (!job.files.includes(f) && job.files.length < 500) job.files.push(f);
+  if (!archivos.length) { job.log.push("[spotify] yt-dlp terminó sin archivos"); return false; }
+  job.log.push(`[spotify] rescatado: ${archivos.length} archivo(s)`);
+  return true;
+}
+
 // Spawn seguro: binario resuelto de la whitelist, args en array, shell:false
 function spawnEngine(id: EngineId, args: string[]): ChildProcess {
   const bin = resolveEngine(id);
@@ -366,8 +445,25 @@ function spawnEngine(id: EngineId, args: string[]): ChildProcess {
     // escriben en la codificación ANSI del sistema (cp1252/cp850 en Windows) y
     // Node decodifica como UTF-8: los títulos y mensajes con acentos o comillas
     // tipográficas llegaban como "you?re". Forzar UTF-8 lo arregla de raíz.
-    env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+    // PATH: los `vendor` del ZIP van DELANTE. Así spotdl encuentra `ffmpeg.exe`
+    // y `deno.exe` (que busca en el PATH, no al lado), y yt-dlp encuentra Deno
+    // para resolver los desafíos de JavaScript de YouTube. Sin esto, spotdl
+    // moría con un «Failed to execute script '_main_'» que no decía nada.
+    env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", PATH: pathConVendor() },
   });
+}
+
+/**
+ * PATH con las carpetas `vendor` delante, para que cualquier motor encuentre a
+ * sus compañeros (ffmpeg, ffprobe, deno, aria2c) sin que el usuario toque nada.
+ */
+function pathConVendor(): string {
+  const sep = process.platform === "win32" ? ";" : ":";
+  const actual = process.env.PATH ?? process.env.Path ?? "";
+  const partes = carpetasVendor().filter((d) => { try { return fs.existsSync(d); } catch { return false; } });
+  const yaEstan = partes.filter((d) => actual.split(sep).some((x) => path.resolve(x) === path.resolve(d)));
+  if (yaEstan.length === partes.length) return actual;
+  return [...partes, actual].filter(Boolean).join(sep);
 }
 
 export function runCapture(
@@ -599,6 +695,7 @@ async function run(job: Job) {
         }
       }
       const ff = resolveEngine("ffmpeg");
+      const deno = resolveEngine("deno");
       const ck = cookieFile(job.platform);
       // Antes de lanzar: si el usuario borró el archivo, hay que quitar el id del
       // archive de ESTE modo. Si no, `--download-archive` lo salta en silencio y
@@ -610,10 +707,10 @@ async function run(job: Job) {
       // duplicadas. Solo se reconcilia si no hay nadie más del mismo modo.
       const ocupado = mgr.jobs.some((j) => j !== job && j.mode === job.mode && ["probing", "running", "post"].includes(j.state));
       if (cfg.noRepeat && !ocupado) reconcileArchiveFor(job.mode);
-      const args = nativo ? null : buildArgs(job.engine, detect(job.url) as Detected, {
+      const opcionesMotor = {
         mode: job.mode, format: job.format, quality: job.quality, outputDir: cfg.outputDir, turbo: cfg.turbo && !job.noTurbo,
 aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.embedMetadata, archiveFile: archiveFileFor(job.mode), profileLimit: cfg.profileLimit,
-        cookies: fs.existsSync(ck) ? ck : null, ffmpegDir: ff ? path.dirname(ff) : null, ffmpegPath: ff,
+        cookies: fs.existsSync(ck) ? ck : null, ffmpegDir: ff ? path.dirname(ff) : null, ffmpegPath: ff, denoPath: deno,
         tempDir: TEMP_DIR,
         cookiesFromBrowser: job.noCookies ? null : (cfg.cookiesFromBrowser || null),
         impersonate: cfg.impersonate || null,
@@ -637,9 +734,11 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         sponsorblock: job.sponsorblock ?? cfg.sponsorblock,
         sections: job.sections ?? cfg.sections,
         splitChapters: job.splitChapters ?? cfg.splitChapters,
-      });
+      };
+      const args = nativo ? null : buildArgs(job.engine, detect(job.url) as Detected, opcionesMotor);
       if (args) {
         job.state = "running"; emit();
+        try {
         await new Promise<void>((resolve, reject) => {
         const p = spawnEngine(job.engine, args);
         mgr.procs.set(job.id, p);
@@ -660,12 +759,28 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
             // gallery-dl imprime rutas de archivos descargados
             if (job.engine === "gallerydl" && job.files.length < 500 && /^[#\s]*[A-Za-z]:\\|^\//.test(l.trim())) job.files.push(l.replace(/^#\s*/, "").trim());
           }
+          ultimoDato = Date.now();
           emit();
         };
         p.stdout?.on("data", (d) => onData(d, decOut));
         p.stderr?.on("data", (d) => onData(d, decErr));
         p.on("error", reject);
+        // ── VIGILANTE ──────────────────────────────────────────────────
+        // Visto en la batería: spotdl se quedó 17 minutos en «Processing
+        // query» y el trabajo seguía «en curso» para siempre. Si el motor no
+        // imprime NADA en 8 minutos, se mata y se explica: mejor un error
+        // claro que una cola congelada.
+        let ultimoDato = Date.now();
+        const TIPO = setInterval(() => {
+          if (Date.now() - ultimoDato < 8 * 60_000) return;
+          clearInterval(TIPO);
+          job.log.push("[vigilante] 8 minutos sin ningún avance: se detuvo el motor");
+          emit();
+          try { killTree(p); } catch {}
+          reject(new Error("El motor dejó de responder (8 minutos sin avances). Se detuvo."));
+        }, 20_000);
         p.on("close", (code) => {
+          clearInterval(TIPO);
           mgr.procs.delete(job.id);
           if (job.state !== "running") return resolve(); // pausado/cancelado
           if (code === 0) {
@@ -681,6 +796,28 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
           reject(new Error(job.log.filter((l) => /error/i.test(l)).pop() || `El motor terminó con código ${code}`));
         });
         });
+        } catch (e) {
+          // ── PLAN B DE SPOTIFY ───────────────────────────────────────────
+          // spotdl pide metadatos a Spotify y baja el audio de YouTube. Si lo
+          // segundo falla (YouTube pide «confirma que no eres un robot»), spotdl
+          // muere con un error opaco de PyInstaller. Antes el trabajo quedaba en
+          // error sin pista de qué pasaba. Ahora se intenta la vía directa:
+          // oEmbed + búsqueda en YouTube + yt-dlp.
+          if (job.engine !== "spotdl") throw e;
+          const motivo = e instanceof Error ? e.message : String(e);
+          job.log.push(`[spotify] spotdl falló (${motivo.slice(0, 120)}); probando la vía directa`);
+          const rescatado = await rescatarSpotify(job, opcionesMotor);
+          // Si tampoco por la vía directa: error de verdad (nada de «listo» sin
+          // archivo), con la explicación en español de qué pasó.
+          if (!rescatado) throw falloSpotifyDe(job, motivo);
+        }
+        }
+      if (!job.files.length && job.engine === "spotdl" && job.state === "running") {
+        // spotdl también puede «terminar bien» sin bajar nada (sale con 0 tras
+        // un AudioProviderError). Mismo plan B.
+        job.log.push("[spotify] spotdl no dejó archivos; probando la vía directa");
+        const ok = await rescatarSpotify(job, opcionesMotor);
+        if (!ok && job.state === "running") throw falloSpotifyDe(job, "spotdl no dejó archivos");
       }
       if (args && job.state !== "running") return;
       // Post-proceso: conversión de fotos con Magick
@@ -832,6 +969,39 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
     event("done", { id: job.id, title: job.title });
   } catch (e) {
     job.error = e instanceof Error ? e.message : String(e);
+    // ── ARCHIVO SÍ, CONVERSIÓN NO ──
+    // yt-dlp baja el vídeo y luego intenta remuxear/reconvertir; con un .ogv de
+    // Wikimedia (Theora) el remux a MP4 es imposible y suelta «Conversion
+    // failed!». El archivo original estaba en el disco y el trabajo acababa en
+    // error: el usuario veía un fallo y un archivo que sí tenía. Ahora se
+    // registra el original y se avisa, que es la verdad.
+    if (/conversion failed/i.test(job.error) && job.files.length) {
+      const vivos = job.files.filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+      if (vivos.length) {
+        const meta2 = (job as Job & { meta?: JobMeta }).meta;
+        job.files = vivos;
+        for (const f of vivos.slice(0, 50)) {
+          let size = 0;
+          try { size = fs.statSync(f).size; } catch {}
+          addHistory({
+            id: newId(), url: job.url,
+            title: vivos.length > 1 ? (tituloDeArchivo(f) || job.title) : tituloFinal(job.title, f),
+            author: meta2?.author || autorDeRuta(f, cfg.outputDir), date: meta2?.date || "", source: job.label,
+            format: path.extname(f).slice(1).toLowerCase() || job.format, size,
+            duration: meta2?.duration ?? 0, path: f,
+            thumbnail: job.thumbnail, engine: job.engine, mode: job.mode, createdAt: Date.now(), videoId: meta2?.videoId,
+          });
+        }
+        job.warning = `Se descargó, pero no se pudo convertir a ${job.format}. El archivo original quedó guardado tal cual (${path.extname(vivos[0]).slice(1).toUpperCase() || "original"}).`;
+        job.log.push(`[aviso] ${job.warning}`);
+        job.error = undefined;
+        job.state = "done"; job.percent = 100; job.speed = 0; job.eta = "";
+        marcarTerminado();
+        event("done", { id: job.id, title: job.title });
+        emit();
+        return;
+      }
+    }
     // ── Fallback de TURBO ──
     // aria2c falla en algunas CDN (YouTube: "aria2c exited with code 22") y
     // yt-dlp NO vuelve solo al descargador nativo: el trabajo se perdería. Se
@@ -853,9 +1023,14 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
     // sitio esperan; los de otros hosts siguen a toda velocidad.
     if (HostLimiter.isRateLimit(job.error) && job.state !== "canceled") {
       const hint = HostLimiter.retryAfterMs(job.error);
-      const ban = limiter.penalize(job.url, Date.now(), hint);
+      // Un «confirma que no eres un robot» NO es un 429: reintentar no lo
+      // arregla, solo deja el host congelado 5 minutos y a los demás trabajos
+      // del mismo sitio esperando. Se reintenta una vez (por si hay cookies
+      // configuradas) y, si sigue, se explica y se sigue con lo demás.
+      const esBot = causaDeError(job.error) === "bot";
+      const ban = limiter.penalize(job.url, Date.now(), hint || (esBot ? 8000 : 0));
       job.attempts = (job.attempts ?? 0) + 1;
-      if (job.attempts <= 4) {
+      if (job.attempts <= (esBot ? 1 : 4)) {
         job.cooldownMs = ban;
         job.log.push(`[rate-limit] el sitio pidió calma; ${hostKey(job.url)} en espera ${Math.round(ban / 1000)} s (intento ${job.attempts}/4)`);
         job.error = undefined;

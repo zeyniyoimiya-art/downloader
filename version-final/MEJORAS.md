@@ -342,3 +342,53 @@ Historial con rutas rotas a propósito (C:\Users\Zenith\… que no existe aquí)
 POST /api/history → {revisadas:3, corregidas:2, perdidas:1} y history.json reescrito.
 Playwright: 3 tarjetas, abrir carpeta, Reconectar · 0 errores de consola · 0 respuestas ≥ 400.
 ```
+
+---
+
+## Fase 13 · enlaces universales: lo que falla, falla por algo
+
+La petición era «que soporte cualquier link». Lo que había no era falta de
+motores: yt-dlp + gallery-dl + spotdl ya cubren miles de sitios. Lo que había era
+**mensajes que culpaban al sitio equivocado** y **un trabajo que se rendía (o se
+colgaba) sin decirlo**. Se probó con 20 links reales contra la app levantada en
+`127.0.0.1`, sin mocks, y salieron siete fallos propios:
+
+| Síntoma | Causa de verdad | Arreglo |
+| --- | --- | --- |
+| Un MP3 404 y un pin de Pinterest borrado decían «falta un motor en `vendor`» | `causaDeError` tenía `/not ?found/` → cualquier 404 era «motor» | causas `noexiste` · `sesion` · `bloqueo` · `proveedor`; `motor` sólo para `ENOENT`/`WinError 2` |
+| Un `.ogv` ya descargado se perdía con «Conversion failed!» | el pase a mp4 falló y se descartó la descarga entera | si hay archivos vivos → `done` + aviso «se guardó el original (OGV)» |
+| Spotify moría con traceback de PyInstaller y dejaba la cola colgada 17 min | spotdl saca el audio de YouTube; YouTube lo rechazaba | plan B propio con oEmbed + `ytsearch5` + puntuación de candidatos; `--ffmpeg` absoluto, Deno y `PATH` con `vendor` |
+| YouTube con «not a bot» reintentaba 4 veces (30→300 s) y congelaba el host | backoff para un error que no mejora esperando | bloqueos de bot: 1 intento, penalización de 8 s |
+| Spotify «listo» con 0 archivos | spotdl sale con 0 sin bajar nada | sin archivos → plan B; si también falla → error con la causa real |
+| Trabajo «en curso» eternamente | no había vigilante | 8 min sin salida → se mata y se explica |
+| gallery-dl escribía nombres inválidos para Windows | el nombre lo pone el sitio | `--windows-filenames` |
+
+### El plan B de Spotify, con números
+
+```
+oEmbed (sin claves) → «Billie Eilish - bad guy»
+yt-dlp --flat-playlist --dump-single-json "ytsearch5:Billie Eilish bad guy"
+puntuación: 55·(palabras del título) + 30·(palabras del artista) + 12 título exacto
+            + 8 canal del artista + 5 sello/topic/VEVO − 40 ruido − 40 álbum completo
+            − 25 duración < 45 s; si el artista no está ni en título ni en canal: −45
+umbral 55 → elegido → descarga con yt-dlp + metadatos + carátula
+```
+
+Verificado con el caso que falló: «bad guy» ya no elige la versión de *Falling In
+Reverse* (nota 18) y sí la de Billie Eilish (nota 100). 10 tests en
+`tests/spotify.test.ts`, dos de ellos con los datos reales de la batería.
+
+### Verificación
+
+```
+tsc 0 · eslint 0 · vitest 392 en 16 archivos · next build ✓
+batería real (15 links, sandbox Linux): 6 done · 7 error · 1 en curso
+  OK  YouTube vídeo · TikTok · SoundCloud · MP4 · MP3 · .ogv (con aviso)
+  ⛔  YouTube Music/playlist/Shorts y Spotify: «no eres un robot» (límite de IP del sandbox:
+      probados los 5 player clients de yt-dlp, con y sin Deno, todos igual)
+  ⛔  Instagram · Vimeo: «pide una cuenta (sesión)»   ⛔ Bilibili: «bloqueando» (412)
+  ⛔  Dailymotion/Pinterest/X: «ya no existe» (contenido retirado)
+```
+
+En un PC doméstico, con cookies del navegador, los dos primeros grupos bajan.
+Lo que **no** se puede prometer: que un sitio con login funcione sin tu sesión.
