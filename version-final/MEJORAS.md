@@ -392,3 +392,34 @@ batería real (15 links, sandbox Linux): 6 done · 7 error · 1 en curso
 
 En un PC doméstico, con cookies del navegador, los dos primeros grupos bajan.
 Lo que **no** se puede prometer: que un sitio con login funcione sin tu sesión.
+
+---
+
+## Fase 14 · Apple Music: decir la verdad y hacer lo que sí se puede
+
+`https://music.apple.com/bo/song/…/1742176281` fallaba con «Ese formato no
+existe en este contenido». El motor decía `Unsupported URL`: el audio de Apple
+va con FairPlay, así que no hay nada que extraer. Ni el motor ni la app podían
+bajarlo, pero el mensaje culpaba al formato y no ofrecía salida.
+
+| Pieza | Qué hace |
+| --- | --- |
+| `lib/server/apple.ts` | `esUrlApple` · `idApple` (canción, álbum, `?i=`, playlist) · `pistasApple` (API pública de iTunes, sin claves) · `artworkGrande` (100 px → 1400 px) · `aPista` |
+| `jobs.ts` → `rescatarApple` | iTunes → búsqueda en YouTube → puntuación → yt-dlp (misma pieza que Spotify: `bajarPista`) |
+| `jobs.ts` → `bajarVistaPreviaApple` | descarga la vista previa de 30 s, la monta con ffmpeg (carátula `attached_pic`, `title`, `artist`, `album`, `genre`, `date`), en mp3 o m4a, y deja el aviso en la tarjeta |
+| `platforms.ts` | plataforma `apple` (etiqueta **Apple Music**), modo sólo `audio`, motor `yt-dlp` |
+| `errores.ts` | causa `sinSoporte`: «Ningún motor sabe leer ese link» (antes: «ese formato no existe») |
+
+Verificación real (mismo sandbox, IP marcada por YouTube):
+
+```
+estado done · 1 archivo · aviso «Apple Music entrega la canción con DRM…»
+ffprobe: 30.01 s · mp3 + mjpeg attached_pic · title/artist/album/genre/date ✔
+```
+
+En una IP doméstica el mismo código baja la **canción completa** desde YouTube;
+aquí el paso 2 se corta por el bloqueo de bot y entra el paso 3.
+
+```
+tsc 0 · eslint 0 · vitest 401 en 17 archivos · next build ✓ · v1.5.0
+```

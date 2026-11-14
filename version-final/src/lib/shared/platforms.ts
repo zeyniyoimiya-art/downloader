@@ -47,6 +47,9 @@ const RULES: { re: RegExp; platform: string; label: string; color: string }[] = 
   { re: /(^|\.)(x\.com|twitter\.com)$/i, platform: "x", label: "X", color: "#e5e5ea" },
   { re: /(^|\.)(instagram\.com|instagr\.am)$/i, platform: "instagram", label: "Instagram", color: "#e1306c" },
   { re: /(^|\.)(open\.)?spotify\.com$/i, platform: "spotify", label: "Spotify", color: "#1ed760" },
+  // Apple Music: ningún motor lo lee (DRM). Se marca como tal para que la ficha
+  // lo diga en vez de mostrar el host y un «Unsupported URL».
+  { re: /(^|\.)(music|itunes)\.apple\.com$/i, platform: "apple", label: "Apple Music", color: "#fa243c" },
   { re: /(^|\.)(pinterest\.[a-z.]+|pin\.it)$/i, platform: "pinterest", label: "Pinterest", color: "#e60023" },
   { re: /(^|\.)artstation\.com$/i, platform: "artstation", label: "ArtStation", color: "#13aff0" },
   { re: /(^|\.)(imgur\.com|deviantart\.com|flickr\.com)$/i, platform: "galeria", label: "Galería", color: "#2ecc71" },
@@ -132,6 +135,7 @@ export function detect(raw: string): Detected | null {
     : rule ?? { platform: "web", label: host, color: "#a78bfa" };
   let kind: Detected["kind"] = "video";
   if (base.platform === "spotify") kind = /\/(album|playlist|artist)\//.test(p) ? "collection" : "track";
+  else if (base.platform === "apple") kind = /\/(album|playlist)\/|\?i=|\/song\//.test(p + u.search) ? "track" : "collection";
   else if (base.platform === "instagram") kind = IG_NO_PERFIL.has((p.split("/").filter(Boolean)[0] ?? "").toLowerCase()) ? "post" : "profile";
   else if (["pinterest", "artstation", "galeria"].includes(base.platform)) kind = "gallery";
   else if (base.platform === "x" && /\/(media|photo)/.test(p)) kind = "gallery";
@@ -172,6 +176,8 @@ const EXT_VIDEO = /\.(mp4|m4v|webm|mkv|mov|avi|flv|ts|mpe?g)(\?|#|$)/i;
 export function supportedModes(d: Detected): AtomicMode[] {
   switch (d.platform) {
     case "spotify": return ["audio"];
+    // Apple Music: sólo audio (la vista previa de 30 s o la canción en YouTube).
+    case "apple": return ["audio"];
     case "soundcloud": return ["audio", "profile"];
     case "pinterest":
     case "artstation":
@@ -268,6 +274,9 @@ export function routeEngine(d: Detected, mode: Mode, opts: { altEngineCN?: boole
   const m = primaryMode(mode);
   const ok = opts.healthy ?? (() => true);
   if (d.platform === "spotify") return "spotdl";
+  // Apple Music: yt-dlp falla al instante («Unsupported URL») y eso dispara el
+  // plan B propio (iTunes + YouTube + vista previa). No hay motor mejor.
+  if (d.platform === "apple") return "yt-dlp";
   if (d.platform === "instagram") return d.kind === "profile" || m === "profile" ? "instaloader" : "yt-dlp";
   if (d.kind === "gallery" || (m === "photo" && ["x", "pinterest", "artstation", "reddit", "web"].includes(d.platform))) return "gallerydl";
   // Directos: streamlink resuelve HLS de Twitch/Kick mucho mejor que yt-dlp

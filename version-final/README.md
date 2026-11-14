@@ -233,6 +233,51 @@ esas palabras. Ningún fallo dice ya «falta un motor» cuando el motor está.
 2. Si acabas de descargar mucho, espera unos minutos: es un límite temporal.
 3. Proxy/VPN en Ajustes → Red, si tu IP está marcada.
 
+## Fase 14: Apple Music (el sitio que ningún motor sabe leer)
+
+Un link de `music.apple.com` fallaba con **«Ese formato no existe en este
+contenido»**. La mitad era mentira y la otra mitad no ayudaba: yt-dlp contesta
+literalmente `Unsupported URL`, porque el audio de Apple va cifrado con FairPlay.
+No hay nada que extraer de ahí, y no es un problema de configuración.
+
+Lo que sí se puede hacer, y ahora hace la app:
+
+1. **Metadatos por la API pública de iTunes** (`itunes.apple.com/lookup`, sin
+   claves ni sesión): título, artista, álbum, género, año y carátula **1400 px**
+   (la de 100 px se pide al mismo CDN en grande).
+2. **La canción de verdad desde YouTube**: busca `artista + título`, puntúa los
+   resultados y baja el que coincide (mismo motor que el plan B de Spotify). En
+   un PC normal esto entrega el archivo completo con carátula y etiquetas.
+3. **Si YouTube no la tiene**, baja la **vista previa de 30 s** que Apple
+   publica sin DRM y la monta con ffmpeg: carátula incrustada (mjpeg
+   `attached_pic`), `title`, `artist`, `album`, `genre` y `date`. En mp3 o en
+   m4a, según lo que pidas. La tarjeta lo avisa con todas las letras: *«Apple
+   Music entrega la canción con DRM… se guardó la vista previa de 30 s»*.
+
+También se aceptan links de **álbum** (`/album/…/1742176034`): iTunes devuelve
+las pistas y se intenta cada una (hasta 30), con la vista previa como red.
+
+### Verificado con el link que falló
+
+```
+https://music.apple.com/bo/song/fake-love-orchestral-version-remix/1742176281
+  plataforma: Apple Music · motor: yt-dlp (falla al instante y dispara el plan B)
+  [apple] iTunes: 1 pista(s), «Japandee - Fake Love (Orchestral Version) [Remix]»
+  [apple] elegido: Fake Love (Orchestral Version) [Remix] - Japandee (WOW MUSIC)
+  [apple] la descarga del resultado falló: … Sign in to confirm you're not a bot
+  [apple] guardada la vista previa de 30 s (con carátula y metadatos)
+  estado: done · 1 archivo
+
+Japandee/Audio/Japandee - Fake Love (Orchestral Version) [Remix] [vista previa Apple].mp3
+  ffprobe → duration 30.01 s · mp3 + stream mjpeg (attached_pic=1)
+  tags    → title, artist, album, genre «Electrónica», date 2024
+```
+
+Dos fallos propios más que salieron de esta prueba: el texto «ese formato no
+existe» para `Unsupported URL` (ahora es **«Ningún motor sabe leer ese link»**) y
+el plan B de Spotify ejecutándose *también* cuando el plan B de Apple ya había
+funcionado (dejaba el trabajo en error con el archivo ya en disco).
+
 ## Estructura de las descargas
 
 ```
@@ -291,6 +336,8 @@ Micro-interacciones que sí quedan (todas respetan `prefers-reduced-motion`):
 | Nada arranca de noche | Ventana silenciosa activa | Ajustes → Programador, o pon `quietEnabled: false` |
 | La isla no actualiza | SSE cortado por un proxy | Abre directo `http://127.0.0.1:4173` |
 | Lanzou falla con «cambió el formato» | El sitio cambió el HTML otra vez | Abre un issue con la URL; hay que ajustar los patrones |
+| Apple Music: «vista previa de 30 s» | Apple cifra el audio con DRM (yt-dlp: `Unsupported URL`) | Es lo máximo legal desde Apple; pega el tema desde YouTube/Spotify para la canción completa |
+| «Ningún motor sabe leer ese link» | El sitio no lo entiende yt-dlp/gallery-dl/spotdl, o el link es de una página | Usa el link directo del vídeo/audio |
 | «El motor se quedó colgado y se detuvo solo» | El motor no imprimió nada en 8 minutos | Reintenta; si se repite, otro motor o revisa proxy/red |
 | Spotify: «la canción se encontró, pero YouTube no entregó el audio» | YouTube rechazó la descarga (bot/cookies) | Ajustes → Cookies del navegador (cerrado) y reintenta: el plan B volverá a intentarlo |
 | La ficha se queda en «Inspeccionando…» | El sitio no contesta o bloquea el sondeo | Mira el aviso de la ficha: dice el motivo exacto (cookies, privado, red) |

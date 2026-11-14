@@ -19,6 +19,7 @@ import { causaDeError, esErrorDeCookies, explicarError } from "../shared/errores
 import { claveSonda, guardarSonda, leerSonda, mejorAudioDe, tamanoDe } from "./probe-cache";
 import { autorDeRuta, tituloDeArchivo, tituloFinal } from "../shared/nombres";
 import { consultaDe, elegirCandidato, metadatosSpotify, type Candidato } from "./spotify";
+import { consultaApple, esUrlApple, idApple, pistasApple, type PistaApple } from "./apple";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -376,64 +377,6 @@ function falloSpotifyDe(job: Job, original: string): Error {
   return new Error(detalle ? `Spotify: ${detalle}` : `Spotify no entregó el audio: ${original.slice(0, 200)}`);
 }
 
-async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
-  const pista = await metadatosSpotify(job.url);
-  if (!pista) { job.log.push("[spotify] sin metadatos: oEmbed no respondió"); return false; }
-  job.log.push(`[spotify] plan B: buscando «${pista.artist} - ${pista.title}» en YouTube`);
-  const deno = resolveEngine("deno");
-  const buscar = ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", "--no-playlist"];
-  if (deno) buscar.push("--js-runtimes", `deno:${deno}`);
-  buscar.push("--", `ytsearch5:${consultaDe(pista)}`);
-  let crudo = "";
-  try {
-    crudo = await runCapture("yt-dlp", buscar, 60000);
-  } catch (e) {
-    job.log.push(`[spotify] la búsqueda en YouTube falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
-    return false;
-  }
-  let entradas: Candidato[] = [];
-  try {
-    const j = JSON.parse(crudo) as { entries?: Candidato[] };
-    entradas = j.entries ?? [];
-  } catch { entradas = []; }
-  if (!entradas.length) { job.log.push("[spotify] YouTube no devolvió resultados"); return false; }
-
-  const elegido = elegirCandidato(entradas, pista);
-  if (!elegido) { job.log.push("[spotify] ningún resultado se parece lo suficiente a la canción"); return false; }
-  const url = elegido.webpage_url ?? elegido.url ?? (elegido.id ? `https://www.youtube.com/watch?v=${elegido.id}` : "");
-  const detectado = url ? detect(url) : null;
-  if (!detectado) { job.log.push("[spotify] el resultado no tiene una URL usable"); return false; }
-  job.log.push(`[spotify] elegido: ${elegido.title ?? url} (${elegido.uploader ?? "?"})`);
-
-  // La ficha del trabajo pasa a describir la canción real.
-  if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
-  if (pista.thumbnail && !job.thumbnail) job.thumbnail = pista.thumbnail;
-
-  let args: string[];
-  try {
-    args = buildArgs("yt-dlp", detectado, { ...opciones, outputDir: opciones.outputDir });
-  } catch (e) {
-    job.log.push(`[spotify] no se pudieron preparar los argumentos: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
-    return false;
-  }
-  let salida = "";
-  try {
-    salida = await runCapture("yt-dlp", args, 20 * 60_000);
-  } catch (e) {
-    job.log.push(`[spotify] la descarga del resultado falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
-    return false;
-  }
-  const archivos = salida.split(/\r?\n/)
-    .filter((l) => l.startsWith("LYF|"))
-    .map((l) => l.slice(4).trim())
-    .filter((f) => f && fs.existsSync(f));
-  for (const f of archivos) if (!job.files.includes(f) && job.files.length < 500) job.files.push(f);
-  if (!archivos.length) { job.log.push("[spotify] yt-dlp terminó sin archivos"); return false; }
-  job.log.push(`[spotify] rescatado: ${archivos.length} archivo(s)`);
-  return true;
-}
-
-// Spawn seguro: binario resuelto de la whitelist, args en array, shell:false
 function spawnEngine(id: EngineId, args: string[]): ChildProcess {
   const bin = resolveEngine(id);
   if (!bin) throw new Error(`Motor ${id} no disponible`);
@@ -453,10 +396,6 @@ function spawnEngine(id: EngineId, args: string[]): ChildProcess {
   });
 }
 
-/**
- * PATH con las carpetas `vendor` delante, para que cualquier motor encuentre a
- * sus compañeros (ffmpeg, ffprobe, deno, aria2c) sin que el usuario toque nada.
- */
 function pathConVendor(): string {
   const sep = process.platform === "win32" ? ";" : ":";
   const actual = process.env.PATH ?? process.env.Path ?? "";
@@ -464,6 +403,197 @@ function pathConVendor(): string {
   const yaEstan = partes.filter((d) => actual.split(sep).some((x) => path.resolve(x) === path.resolve(d)));
   if (yaEstan.length === partes.length) return actual;
   return [...partes, actual].filter(Boolean).join(sep);
+}
+
+/**
+ * Busca una pista en YouTube y la baja con yt-dlp.
+ *
+ * Es la pieza común del plan B de Spotify y del de Apple Music: los dos tienen
+ * los metadatos (título + artista) pero no el audio, así que buscan, puntúan y
+ * bajan. Devuelve `false` sin lanzar: el que llama decide qué contar.
+ */
+async function bajarPista(
+  job: Job,
+  opciones: Parameters<typeof buildArgs>[2],
+  pista: { title: string; artist: string; thumbnail?: string },
+  etiqueta: string,
+): Promise<boolean> {
+  job.log.push(`[${etiqueta}] plan B: buscando «${pista.artist} ${pista.title}» en YouTube`);
+  const deno = resolveEngine("deno");
+  const buscar = ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", "--no-playlist"];
+  if (deno) buscar.push("--js-runtimes", `deno:${deno}`);
+  const consulta = pista.artist ? `${pista.artist} ${pista.title}` : pista.title;
+  buscar.push("--", `ytsearch5:${consulta.replace(/["“”]/g, " ").trim()}`);
+  let crudo = "";
+  try {
+    crudo = await runCapture("yt-dlp", buscar, 60000);
+  } catch (e) {
+    job.log.push(`[${etiqueta}] la búsqueda en YouTube falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
+    return false;
+  }
+  let entradas: Candidato[] = [];
+  try {
+    const j = JSON.parse(crudo) as { entries?: Candidato[] };
+    entradas = j.entries ?? [];
+  } catch { entradas = []; }
+  if (!entradas.length) { job.log.push(`[${etiqueta}] YouTube no devolvió resultados`); return false; }
+
+  const elegido = elegirCandidato(entradas, pista);
+  if (!elegido) { job.log.push(`[${etiqueta}] ningún resultado se parece lo suficiente`); return false; }
+  const url = elegido.webpage_url ?? elegido.url ?? (elegido.id ? `https://www.youtube.com/watch?v=${elegido.id}` : "");
+  const detectado = url ? detect(url) : null;
+  if (!detectado) { job.log.push(`[${etiqueta}] el resultado no tiene una URL usable`); return false; }
+  job.log.push(`[${etiqueta}] elegido: ${elegido.title ?? url} (${elegido.uploader ?? "?"})`);
+
+  // La ficha del trabajo pasa a describir la canción real.
+  if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
+  if (pista.thumbnail && !job.thumbnail) job.thumbnail = pista.thumbnail;
+
+  let args: string[];
+  try {
+    args = buildArgs("yt-dlp", detectado, { ...opciones, outputDir: opciones.outputDir });
+  } catch (e) {
+    job.log.push(`[${etiqueta}] no se pudieron preparar los argumentos: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    return false;
+  }
+  let salida = "";
+  try {
+    salida = await runCapture("yt-dlp", args, 20 * 60_000);
+  } catch (e) {
+    job.log.push(`[${etiqueta}] la descarga del resultado falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
+    return false;
+  }
+  const archivos = salida.split(/\r?\n/)
+    .filter((l) => l.startsWith("LYF|"))
+    .map((l) => l.slice(4).trim())
+    .filter((f) => f && fs.existsSync(f));
+  for (const f of archivos) if (!job.files.includes(f) && job.files.length < 500) job.files.push(f);
+  if (!archivos.length) { job.log.push(`[${etiqueta}] yt-dlp terminó sin archivos`); return false; }
+  job.log.push(`[${etiqueta}] rescatado: ${archivos.length} archivo(s)`);
+  return true;
+}
+
+async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
+  const pista = await metadatosSpotify(job.url);
+  if (!pista) { job.log.push("[spotify] sin metadatos: oEmbed no respondió"); return false; }
+  return bajarPista(job, opciones, pista, "spotify");
+}
+
+/** Descarga una URL con redirecciones (vista previa y carátula de Apple). */
+async function descargarA(url: string, destino: string): Promise<void> {
+  const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(60000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (!buf.length) throw new Error("respuesta vacía");
+  fs.writeFileSync(destino, buf);
+}
+
+/**
+ * Monta un archivo con la vista previa de 30 s de Apple, con carátula y
+ * metadatos. Es lo único que Apple publica sin DRM: se guarda y se avisa.
+ */
+async function bajarVistaPreviaApple(
+  job: Job,
+  opciones: Parameters<typeof buildArgs>[2],
+  pista: PistaApple,
+): Promise<boolean> {
+  if (!pista.previewUrl) { job.log.push("[apple] Apple no publica vista previa de esta canción"); return false; }
+  const ff = resolveEngine("ffmpeg");
+  if (!ff) { job.log.push("[apple] sin ffmpeg no se puede montar la vista previa"); return false; }
+
+  const tmp = path.join(TEMP_DIR, `apple-${job.id}`);
+  fs.mkdirSync(tmp, { recursive: true });
+  const m4a = path.join(tmp, "preview.m4a");
+  const jpg = path.join(tmp, "cover.jpg");
+  try { await descargarA(pista.previewUrl, m4a); } catch (e) {
+    job.log.push(`[apple] no se pudo bajar la vista previa: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    return false;
+  }
+  let hayCover = false;
+  if (pista.artwork) {
+    try { await descargarA(pista.artwork, jpg); hayCover = fs.existsSync(jpg) && fs.statSync(jpg).size > 500; } catch { hayCover = false; }
+  }
+
+  // Formato pedido: mp3 se recodifica; el resto se queda en m4a (el original).
+  const esMp3 = job.format === "mp3";
+  const ext = esMp3 ? "mp3" : "m4a";
+  const carpeta = path.join(opciones.outputDir, nombreSeguro(pista.artist || pista.album || "Apple Music"), "Audio");
+  fs.mkdirSync(carpeta, { recursive: true });
+  const base = nombreSeguro(`${pista.artist ? pista.artist + " - " : ""}${pista.title}`);
+  const destino = path.join(carpeta, `${base} [vista previa Apple].${ext}`);
+
+  const args = ["-y", "-i", m4a];
+  if (hayCover) args.push("-i", jpg);
+  args.push("-map", "0:a");
+  if (hayCover) args.push("-map", "1:v", "-disposition:v", "attached_pic", "-metadata:s:v", "title=Carátula", "-metadata:s:v", "comment=Cover (front)");
+  if (esMp3) args.push("-c:a", "libmp3lame", "-q:a", "2", "-id3v2_version", "3");
+  else args.push("-c:a", "copy");
+  if (hayCover) args.push("-c:v", "mjpeg");
+  args.push(
+    "-metadata", `title=${pista.title}`,
+    "-metadata", `artist=${pista.artist}`,
+    ...(pista.album ? ["-metadata", `album=${pista.album}`] : []),
+    ...(pista.genero ? ["-metadata", `genre=${pista.genero}`] : []),
+    ...(pista.anio ? ["-metadata", `date=${pista.anio}`] : []),
+    destino,
+  );
+  try {
+    await runCapture("ffmpeg", args, 180000);
+  } catch (e) {
+    job.log.push(`[apple] ffmpeg no pudo montar la vista previa: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    try { fs.unlinkSync(m4a); } catch {}
+    return false;
+  }
+  try { fs.unlinkSync(m4a); } catch {}
+  if (hayCover) { try { fs.unlinkSync(jpg); } catch {} }
+  if (!fs.existsSync(destino)) { job.log.push("[apple] el archivo de la vista previa no se creó"); return false; }
+
+  if (job.files.length < 500) job.files.push(destino);
+  if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
+  if (pista.artwork) job.thumbnail = pista.artwork;
+  job.warning =
+    "Apple Music entrega la canción con DRM, así que no hay audio completo que descargar: se guardó la vista previa de 30 s que Apple publica, con carátula y metadatos. " +
+    "Para la canción entera, pega el mismo tema desde YouTube o Spotify.";
+  job.log.push("[apple] guardada la vista previa de 30 s (con carátula y metadatos)");
+  return true;
+}
+
+/**
+ * Apple Music / iTunes.
+ *
+ * Ningún motor lo lee (yt-dlp contesta «Unsupported URL»: el audio va cifrado
+ * con FairPlay). Antes la app se limitaba a decir «ese formato no existe».
+ * Ahora: metadatos de iTunes → canción en YouTube → si no, vista previa.
+ */
+async function rescatarApple(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
+  const ids = idApple(job.url);
+  if (!ids) { job.log.push("[apple] no se reconoce el link de Apple Music"); return false; }
+
+  if (ids.tipo === "playlist" || ids.tipo === "artist") {
+    job.log.push(`[apple] un link de ${ids.tipo} no se puede leer: iTunes no da las pistas sin token de MusicKit`);
+    return false;
+  }
+
+  const limite = Math.max(1, Math.min(30, getConfig().profileLimit || 10));
+  const pistas = await pistasApple(job.url, limite);
+  if (!pistas.length) { job.log.push("[apple] iTunes no devolvió metadatos para ese link"); return false; }
+  job.log.push(`[apple] iTunes: ${pistas.length} pista(s), p. ej. «${pistas[0].artist} - ${pistas[0].title}»`);
+
+  let bajadas = 0;
+  for (const p of pistas) {
+    if (job.state !== "running") break;
+    job.percent = Math.round((bajadas / pistas.length) * 90); emit();
+    const ok = await bajarPista(job, opciones, { title: p.title, artist: p.artist, thumbnail: p.artwork }, "apple");
+    if (ok) { bajadas++; continue; }
+    // Sin canción en YouTube: al menos la vista previa, que sí es legal y real.
+    if (await bajarVistaPreviaApple(job, opciones, p)) bajadas++;
+    // Álbum: si fallan dos seguidas, no se insiste con las 20 restantes.
+    else if (pistas.length > 1 && bajadas === 0) {
+      job.log.push("[apple] el álbum no se pudo bajar; se deja de intentar");
+      break;
+    }
+  }
+  return bajadas > 0 && job.files.length > 0;
 }
 
 export function runCapture(
@@ -803,13 +933,31 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
           // muere con un error opaco de PyInstaller. Antes el trabajo quedaba en
           // error sin pista de qué pasaba. Ahora se intenta la vía directa:
           // oEmbed + búsqueda en YouTube + yt-dlp.
-          if (job.engine !== "spotdl") throw e;
-          const motivo = e instanceof Error ? e.message : String(e);
-          job.log.push(`[spotify] spotdl falló (${motivo.slice(0, 120)}); probando la vía directa`);
-          const rescatado = await rescatarSpotify(job, opcionesMotor);
-          // Si tampoco por la vía directa: error de verdad (nada de «listo» sin
-          // archivo), con la explicación en español de qué pasó.
-          if (!rescatado) throw falloSpotifyDe(job, motivo);
+          // ── APPLE MUSIC ────────────────────────────────────────────────
+          // yt-dlp contesta «Unsupported URL» a cualquier link de
+          // music.apple.com: el audio va con DRM y no hay nada que extraer.
+          // No es un fallo de configuración, así que se va por la vía directa.
+          if (esUrlApple(job.url)) {
+            job.log.push(`[apple] los motores no leen Apple Music (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}); vía directa`);
+            const okApple = await rescatarApple(job, opcionesMotor);
+            if (!okApple) {
+              throw new Error("Apple Music: la canción no se encontró en YouTube y Apple no publica vista previa de este tema");
+            }
+          } else {
+            // ── PLAN B DE SPOTIFY ─────────────────────────────────────────
+            // spotdl pide metadatos a Spotify y baja el audio de YouTube. Si lo
+            // segundo falla (YouTube pide «confirma que no eres un robot»),
+            // spotdl muere con un error opaco de PyInstaller. Antes el trabajo
+            // quedaba en error sin pista de qué pasaba. Ahora se intenta la vía
+            // directa: oEmbed + búsqueda en YouTube + yt-dlp.
+            if (job.engine !== "spotdl") throw e;
+            const motivo = e instanceof Error ? e.message : String(e);
+            job.log.push(`[spotify] spotdl falló (${motivo.slice(0, 120)}); probando la vía directa`);
+            const rescatado = await rescatarSpotify(job, opcionesMotor);
+            // Si tampoco por la vía directa: error de verdad (nada de «listo»
+            // sin archivo), con la explicación en español de qué pasó.
+            if (!rescatado) throw falloSpotifyDe(job, motivo);
+          }
         }
         }
       if (!job.files.length && job.engine === "spotdl" && job.state === "running") {

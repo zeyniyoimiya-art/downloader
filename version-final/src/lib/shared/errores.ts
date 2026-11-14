@@ -19,7 +19,7 @@ export interface ErrorExplicado {
   /** Qué hacer, en una frase. */
   arreglo: string;
   /** Clave estable de la causa, para decidir reintentos. */
-  causa: "cookies" | "bot" | "privado" | "geo" | "formato" | "disco" | "red" | "motor" | "noexiste" | "sesion" | "bloqueo" | "proveedor" | "otro";
+  causa: "cookies" | "bot" | "privado" | "geo" | "formato" | "disco" | "red" | "motor" | "noexiste" | "sesion" | "bloqueo" | "proveedor" | "sinSoporte" | "otro";
 }
 
 /** ¿El fallo viene de no poder leer la base de cookies del navegador? */
@@ -36,7 +36,10 @@ export function causaDeError(msg: string | undefined | null): ErrorExplicado["ca
   if (/confirm you.?re not a bot|sign in to confirm|captcha|http error 429|too many requests/.test(m)) return "bot";
   if (/private video|members-only|join this channel|requires payment|login required|iniciar sesión/.test(m)) return "privado";
   if (/not available in your country|geo.?restrict|blocked it in your country/.test(m)) return "geo";
-  if (/requested format is not available|no video formats found|unsupported url|is not a valid url/.test(m)) return "formato";
+  // «Unsupported URL» = ningún motor conoce ese sitio; NO es un formato que
+  // falte (el usuario veía «ese formato no existe» en links de Apple Music).
+  if (/unsupported url|is not a valid url|no suitable extractor|is not supported/.test(m)) return "sinSoporte";
+  if (/requested format is not available|no video formats found/.test(m)) return "formato";
   if (/no space left|disk full|enospc|espacio insuficiente/.test(m)) return "disco";
   // OJO: antes esta línea atrapaba «not found» en general, así que un pin de
   // Pinterest inexistente o un 404 del sitio se anunciaban como «falta un motor
@@ -95,6 +98,13 @@ export function explicarError(msg: string | undefined | null): ErrorExplicado {
         causa,
         titulo: "Bloqueado por país",
         arreglo: "Ese vídeo solo se puede ver desde otra región: configura un proxy en Ajustes → Red.",
+      };
+    case "sinSoporte":
+      return {
+        causa,
+        titulo: "Ningún motor sabe leer ese link",
+        arreglo:
+          "El sitio no está entre los que entienden yt-dlp, gallery-dl o spotdl (o el link es de una página, no del archivo). Prueba el link directo del vídeo/audio, o el mismo contenido en YouTube o Spotify.",
       };
     case "formato":
       return {
