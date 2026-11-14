@@ -251,3 +251,50 @@ Detalle de cada una en `MOTORES.md` (§11–19). Lo que la fase 8 **no** promete
   guarda credenciales de nadie, ni siquiera las tuyas.
 - Las **estadísticas** se calculan en tu PC desde `history.json`: no hay tabla
   nueva, ni telemetría, ni salida a internet.
+
+---
+
+## 8. Fase 10–11 · probar con la red de verdad
+
+Todo lo anterior se verificó con motores simulados (`LINYUE_MOCK_ENGINES=1`), que
+es rápido y reproducible pero **no puede** encontrar los fallos que solo aparecen
+cuando hay un `yt-dlp` real, una red real y un navegador real. Así que la fase 10
+se hizo con YouTube de verdad (vídeo `jNQXAC9IVRw`) en un Chromium automatizado,
+y la 11 con el ZIP tal como lo descarga el usuario.
+
+### Los ocho fallos que aparecieron
+
+| # | Qué se vio | Dónde estaba | Cómo se arregló |
+| --- | --- | --- | --- |
+| 1 | La ficha de vista previa nunca se rellenaba: quedaba «Inspeccionando…» | `src/app/api/probe/route.ts` — doble `Response.json` sobre un `Response` → `{}` de 2 bytes | la promesa resuelve al objeto y se envuelve una vez |
+| 2 | Sondeo de 30 s en frío | `--retries` por defecto de yt-dlp | 1 reintento, `--socket-timeout 15`, timeout 20 s, caché de 10 min |
+| 3 | Quitar una suscripción: `404` y la fila seguía | `app/page.tsx` mandaba el id en el cuerpo | `?id=` en la query |
+| 4 | Suscripciones muertas: `spawn …/vendor/yt-dlp ENOENT` | `lib/server/subs.ts` con ruta fija al binario | `resolveEngine("yt-dlp")` |
+| 5 | Playlists con la ruta como título en Recientes | `lib/server/jobs.ts` | `tituloDeArchivo()` |
+| 6 | «Re-bajar» decía «Re-bajando» aunque fallara | `app/recientes/page.tsx` | se mira `r.ok` y el mensaje del servidor |
+| 7 | *Abrir carpeta* del Taller abría **Documentos** | `lib/server/taller.ts` lanzaba `["/select,", ruta]` como dos argumentos | `abrir-sistema.ts` con la sintaxis correcta por SO |
+| 8 | Ajustes se salía de la pantalla en móvil (390 px) y la consola soltaba avisos de `navigator.vibrate` | `max-w-[42%]` sin `min-w-0`; vibración sin interacción | `basis-[38%]` + `min-w-0`; `userActivation` antes de vibrar |
+
+Extra: todos los `spawn` de «lanzar y olvidarse» (`shutdown`, `taskkill`,
+`explorer`) podían tumbar el proceso de Node con un `error` no escuchado. Ahora
+pasan por `lib/server/proc.ts`, que siempre lo escucha.
+
+### Verificación
+
+```
+tsc    0 errores
+eslint 0 errores
+vitest 366 tests en 14 archivos  (antes 351: +15 de regresión)
+build  ✓  (Next 16.2.6, Turbopack)
+
+Sonda real:      1,27 s en frío · 0,01 s con caché
+Suscripciones:   {ok:true, nuevos:1} · etiqueta «jawed»
+Playwright:      6 rutas · 0 errores de consola · 0 respuestas ≥ 400
+Móvil 390 px:    6 rutas · sin scroll horizontal
+Taller real:     mp3 de 19 s → mp3 320 kbps, 66× tiempo real, salida válida (ffprobe)
+```
+
+Los únicos códigos 400 que quedan son los deliberados: `POST /api/cookies` con
+texto basura y `PUT /api/config` con la carpeta de salida vacía. Un `404` existe
+también a propósito: abrir un archivo que ya no está en el disco, que ahora se
+explica con «Ese archivo ya no está en el disco».

@@ -322,12 +322,15 @@ export default function Ajustes() {
       <Panel className="p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="tick flex items-center gap-2 font-semibold"><Cpu size={17} strokeWidth={1.5} />Motor vivo <span className="mono muted text-xs">{ok}/{engines.length} listos</span></h2>
-          <div className="flex items-center gap-2">
-            <input className={`${input} w-full sm:w-72`} value={cfg.vendorDir} onChange={(e) => set("vendorDir", e.target.value)} aria-label="Carpeta vendor" title="Carpeta /vendor" />
-            <button onClick={doUpdate} disabled={updating} className="btn btn-glass h-9 px-4 text-xs sq-pill" title="yt-dlp -U · gallery-dl --update · BaiduPCS-Go update">
+          {/* En un móvil, la fila de controles se iba a 452 px y la página entera
+              se salía de la pantalla. Ahora el campo va arriba ocupando la
+              línea y los dos botones caben abajo sin partir el texto. */}
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+            <input className={`${input} min-w-0 flex-1 basis-full sm:w-72 sm:flex-none`} value={cfg.vendorDir} onChange={(e) => set("vendorDir", e.target.value)} aria-label="Carpeta vendor" title="Carpeta /vendor" />
+            <button onClick={doUpdate} disabled={updating} className="btn btn-glass h-9 flex-1 whitespace-nowrap px-4 text-xs sq-pill sm:flex-none" title="yt-dlp -U · gallery-dl --update · BaiduPCS-Go update">
               <DownloadCloud size={14} className={updating ? "animate-bounce" : "ico"} />{updating ? "Actualizando…" : "Actualizar"}
             </button>
-            <button onClick={doScan} className="btn btn-glass h-9 px-4 text-xs sq-pill"><RefreshCw size={14} className={scanning ? "animate-spin" : "ico"} />Re-escanear</button>
+            <button onClick={doScan} className="btn btn-glass h-9 flex-1 whitespace-nowrap px-4 text-xs sq-pill sm:flex-none"><RefreshCw size={14} className={scanning ? "animate-spin" : "ico"} />Re-escanear</button>
           </div>
         </div>
         <p className="muted mb-3 text-[11px]">
@@ -350,9 +353,9 @@ export default function Ajustes() {
             </button>
           </div>
         )}
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid min-w-0 gap-2 md:grid-cols-2">
           {engines.map((e, i) => (
-            <div key={e.id} className="scrim rise flex items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
+            <div key={e.id} className="scrim rise flex min-w-0 items-center gap-3 border border-[var(--line)] p-3 sq-sm" style={{ animationDelay: `${i * 35}ms` }}>
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.health === "ok" ? "" : ""}`} style={{ background: e.health === "ok" ? "var(--ok-ink)" : e.health === "warn" ? "var(--warn-ink)" : "var(--danger-ink)", boxShadow: `0 0 9px ${e.health === "ok" ? "var(--ok-ink)" : e.health === "warn" ? "var(--warn-ink)" : "var(--danger-ink)"}` }} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2"><span className="mono text-sm">{e.exe}</span>{e.optional && <span className="muted text-[11px]">opcional</span>}</div>
@@ -378,7 +381,13 @@ export default function Ajustes() {
               {/* El texto de estado se RECORTA: antes una nota larga (el error de
                   Perl de exiftool) se salía de la tarjeta y se montaba encima de
                   la de al lado. El texto completo queda en el title. */}
-              <span className="mono max-w-[42%] shrink-0 truncate text-right text-[11px]" title={e.version ?? e.note}>{e.version ?? e.note}</span>
+              {/* Ancho DEFINIDO (38 %) y no `max-w-[42%]`: con max-width el
+                  min-content seguía siendo el texto entero, la tarjeta crecía
+                  hasta 415 px y en un móvil de 390 la página entera se salía
+                  de la pantalla (se veía todo más pequeño y con scroll
+                  horizontal). Con `basis` + `min-w-0` el texto se recorta y la
+                  rejilla respeta el ancho. */}
+              <span className="mono min-w-0 shrink-0 basis-[38%] truncate text-right text-[11px]" title={e.version ?? e.note}>{e.version ?? e.note}</span>
             </div>
           ))}
         </div>

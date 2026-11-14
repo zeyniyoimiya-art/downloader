@@ -13,6 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { argsTaller, nombreSalida, porcentaje, segundosDeProgreso, type OpcionesTaller } from "../shared/taller";
+import { abrirEnSistema } from "./abrir-sistema";
 
 export interface TareaTaller extends OpcionesTaller {
   id: string;
@@ -172,14 +173,9 @@ export async function abrirSalida(id: string): Promise<{ ok: boolean; error?: st
   const t = taller.tareas.find((x) => x.id === id);
   if (!t || !t.salida) return { ok: false, error: "Esa tarea no tiene salida" };
   if (!fs.existsSync(t.salida)) return { ok: false, error: "El archivo ya no está" };
-  const { spawn } = await import("node:child_process");
-  const carpeta = path.dirname(t.salida);
-  try {
-    if (process.platform === "win32") spawn("explorer", ["/select,", t.salida], { windowsHide: true, detached: true }).unref();
-    else if (process.platform === "darwin") spawn("open", ["-R", t.salida], { detached: true }).unref();
-    else spawn("xdg-open", [carpeta], { detached: true }).unref();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "No se pudo abrir" };
-  }
+  // Mismo helper que el resto de la app: `spawn("explorer", ["/select,", ruta])`
+  // con DOS argumentos hacía que Explorer ignorara el archivo y abriera
+  // Documentos. Y un spawn fallido aquí tumbaba el servidor.
+  const r = abrirEnSistema(t.salida, true);
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
 }

@@ -16,6 +16,8 @@ import { enVentanaSilenciosa, msHastaApertura, puedeArrancar } from "../shared/s
 import { descargarLanzou, esLanzou, nombreSeguro, resolverLanzou } from "./lanzou";
 import { programarApagado } from "./power";
 import { esErrorDeCookies, explicarError } from "../shared/errores";
+import { claveSonda, guardarSonda, leerSonda, mejorAudioDe, tamanoDe } from "./probe-cache";
+import { autorDeRuta, tituloDeArchivo, tituloFinal } from "../shared/nombres";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -52,6 +54,7 @@ function cookiePairsFor(ck: string): string[] {
 }
 import { isHealthy, MOCK, resolveEngine, scanEngines, getEngines } from "./engines";
 import { addHistory, archiveFileFor, cookieFile, getConfig, inHistory, newId, reconcileArchiveFor, TEMP_DIR, type Config } from "./store";
+import { lanzarSuelto } from "./proc";
 
 export type JobState = "queued" | "probing" | "running" | "post" | "paused" | "done" | "error" | "canceled" | "skipped";
 export interface Job {
@@ -413,7 +416,7 @@ export function runCapture(
 function killTree(p: ChildProcess) {
   if (!p.pid) return;
   try {
-    if (process.platform === "win32") spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { shell: false, windowsHide: true });
+    if (process.platform === "win32") lanzarSuelto("taskkill", ["/pid", String(p.pid), "/T", "/F"]);
     else process.kill(-p.pid, "SIGKILL");
   } catch { try { p.kill("SIGKILL"); } catch {} }
 }
@@ -423,7 +426,13 @@ async function probeMeta(job: Job) {
   try {
     // Se registra el proceso de sondeo para que pausar/cancelar lo mate de
     // verdad (antes quedaba huérfano y seguía gastando red y CPU).
-    const out = await runCapture(
+    // Si la ficha ya se sondeó hace <10 min (lo normal: pulsaste «Vista previa»
+    // antes de descargar), se reutiliza y la descarga arranca sin esperar otra
+    // extracción completa. Ahorra entre 1 y 15 s por trabajo.
+    const cacheado = leerSonda(claveSonda(job.url, job.mode));
+    const out = cacheado
+      ? JSON.stringify(cacheado.crudo)
+      : await runCapture(
       "yt-dlp",
       ["--dump-single-json", "--no-playlist", "--skip-download", "--", job.url],
       25000,
@@ -433,6 +442,7 @@ async function probeMeta(job: Job) {
       },
     );
     const j = JSON.parse(out);
+    if (!cacheado) guardarSonda(claveSonda(job.url, job.mode), j, {});
     job.title = j.title || job.title;
     job.thumbnail = j.thumbnail || "";
     // Mejor stream SOLO de audio (vcodec "none"): de ahí sale el códec real,
@@ -442,7 +452,7 @@ async function probeMeta(job: Job) {
     // Aproximación honesta: el mejor vídeo + el mejor audio si vienen separados
     // (DASH). Si el sitio da el archivo ya mezclado, se usa ese.
     const mejorVideo = formatos.filter((f) => f.vcodec && f.vcodec !== "none").sort((a, b) => tam(b) - tam(a))[0];
-    const sizeApprox = Number(j.filesize_approx ?? tam(mejorVideo) ?? 0) || undefined;
+    const sizeApprox = tamanoDe(j) ?? (Number(tam(mejorVideo) ?? 0) || undefined);
     const audios = ((j.formats ?? []) as { acodec?: string; vcodec?: string; abr?: number; ext?: string }[])
       .filter((f) => f.acodec && f.acodec !== "none" && (!f.vcodec || f.vcodec === "none"))
       .sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0));
@@ -797,8 +807,14 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         } catch {}
       }
       addHistory({
-        id: newId(), url: job.url, title: files.length > 1 ? path.basename(f) : job.title,
-        author: meta?.author || "", date: meta?.date || "", source: job.label,
+        id: newId(), url: job.url,
+        // Si el motor no dio título (falló la sonda a medias), NO se guarda la
+        // URL como título: se deduce del nombre del archivo, que es lo que el
+        // usuario reconoce. Antes el historial se llenaba de «https://youtu.be/…».
+        // Varios archivos (playlist): el nombre del archivo ya es el título, sin
+        // extensión ni «[id]». Un archivo: el del motor o, si es una URL, el del archivo.
+        title: files.length > 1 ? (tituloDeArchivo(f) || job.title) : tituloFinal(job.title, f),
+        author: meta?.author || autorDeRuta(f, cfg.outputDir), date: meta?.date || "", source: job.label,
         format: job.upconvert ? `${fmt} (transcode)` : fmt, size, duration, path: f,
         thumbnail: job.thumbnail, engine: job.engine, mode: job.mode, createdAt: Date.now(), videoId: meta?.videoId,
       });

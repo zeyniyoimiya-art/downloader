@@ -47,9 +47,13 @@ src/lib/server/     lo que toca el sistema
   subs.ts             subs.json + revisión real (--flat-playlist) y encolado de lo nuevo
   taller.ts           cola del conversor local (ffmpeg, progreso por -progress pipe:1)
   power.ts            apagar el equipo al terminar, con cuenta atrás y cancelación
+  probe-cache.ts      fichas de la vista previa en memoria (10 min, 60 entradas, 24 MB)
+  abrir-sistema.ts    el ÚNICO sitio que decide cómo se abre una carpeta en cada SO
+  proc.ts             procesos «y olvidarse» (shutdown, taskkill) que no pueden tumbar el servidor
+  src/lib/shared/     nombres.ts (títulos legibles), abrir.ts (¿archivo, carpeta o nada?)
 src/app/            rutas y API (App Router)
 src/components/     Chrome (header, isla, tab bar), ui.tsx (piezas), Ambient (fondo)
-tests/              core, fase4, fase5, fase6/baidu, fase7, fase8, fase9, taller, ffmpeg-real
+tests/              core, fase4…fase9, taller, ffmpeg-real, auditoria, regresion-rutas, abrir-sistema
 ```
 
 ## Cuatro cosas nuevas (fase 9)
@@ -103,6 +107,37 @@ En **Ajustes → Sistema**:
 
 `.github/workflows/ci.yml` ejecuta tipos, lint, los 312 tests (con ffmpeg de verdad)
 y el build en cada push a `main`.
+
+## Fase 10–11: la prueba con red de verdad
+
+Hasta la fase 9 todo estaba probado con motores simulados. En la 10 se probó con
+**yt-dlp real contra YouTube real** en el navegador, y aparecieron cosas que los
+tests con mocks no podían ver. Las siete, arregladas y con test de regresión:
+
+| # | Síntoma que veía el usuario | Causa de verdad | Arreglo |
+| --- | --- | --- | --- |
+| 1 | «La vista previa tarda muchísimo»: la ficha se quedaba en *Inspeccionando…* para siempre | `POST /api/probe` devolvía `Response.json(await tarea)` sobre una promesa que **ya** era un `Response` → se serializaba a `{}` (2 bytes) | la promesa interna resuelve al objeto; la ruta envuelve una sola vez |
+| 2 | La misma vista previa, con red lenta, tardaba 30-90 s | `--retries` por defecto de yt-dlp (10, con backoff) + sondeo repetido del mismo link | `--retries 1 --fragment-retries 1 --socket-timeout 15`, timeout 20 s y **caché de fichas** de 10 min |
+| 3 | Quitar una suscripción no hacía nada | el cliente mandaba el id en el cuerpo y la ruta lo leía de la query → `404 /api/subs` | `DELETE /api/subs?id=…` |
+| 4 | Las suscripciones fallaban siempre con `spawn …vendor/yt-dlp ENOENT` | buscaba el binario con la ruta fija `vendor/yt-dlp(.exe)`; el del ZIP se llama `ytdlp.exe` | usa `resolveEngine("yt-dlp")` y, si no hay motor, lo dice en español |
+| 5 | En playlists, Recientes mostraba la ruta completa como título | se guardaba `basename(dirname)` | `tituloDeArchivo()` |
+| 6 | *Abrir carpeta* en el Taller mandaba a **Documentos** en vez de al archivo | `spawn("explorer", ["/select,", ruta])`: dos argumentos, Explorer recibía `/select,` suelto | `abrir-sistema.ts`: `"/select,<ruta>"` como **un** argumento, `open -R` en macOS, `xdg-open` en Linux, y nunca se lanza una ruta que no existe |
+| 7 | La consola del navegador soltaba avisos y la página de Ajustes se salía de la pantalla en un móvil de 390 px | `navigator.vibrate` sin interacción previa; `max-w-[42%]` en la tarjeta de motor (su min-content no encogía) | se comprueba `userActivation` antes de vibrar; ancho **definido** (`basis-[38%]`) + `min-w-0` en la rejilla |
+
+Y un octavo, silencioso pero grave: cualquier `spawn` que fallaba (un `taskkill`
+bloqueado por el antivirus, un `shutdown` ausente, `explorer.exe` con una ruta
+rara) emitía `error` en el hijo y **tumbaba el servidor entero**, porque nadie
+escuchaba ese evento. Ahora todos esos lanzamientos pasan por `proc.ts` /
+`abrir-sistema.ts`, que siempre escuchan.
+
+### Qué se midió (no es una opinión)
+
+- Sonda de la vista previa con YouTube real: **1,27 s en frío** y **0,01 s con caché**
+  (antes: 30 s y `{}`).
+- `POST /api/subs {action:"checkAll"}` con motor real: `{ok:true, nuevos:1}` y la
+  etiqueta pasa de la URL a **`jawed`** (el nombre del canal).
+- 6 rutas recorridas con Playwright: **0 errores de consola, 0 respuestas ≥ 400**.
+- Las 6 rutas también a 390 px de ancho: **sin scroll horizontal** en ninguna.
 
 ## Estructura de las descargas
 
@@ -162,4 +197,7 @@ Micro-interacciones que sí quedan (todas respetan `prefers-reduced-motion`):
 | Nada arranca de noche | Ventana silenciosa activa | Ajustes → Programador, o pon `quietEnabled: false` |
 | La isla no actualiza | SSE cortado por un proxy | Abre directo `http://127.0.0.1:4173` |
 | Lanzou falla con «cambió el formato» | El sitio cambió el HTML otra vez | Abre un issue con la URL; hay que ajustar los patrones |
+| La ficha se queda en «Inspeccionando…» | El sitio no contesta o bloquea el sondeo | Mira el aviso de la ficha: dice el motivo exacto (cookies, privado, red) |
+| «Abrir carpeta» abre Documentos | La ruta guardada ya no existe | Linyue comprueba antes y te dice «Ese archivo ya no está en el disco» |
+| La isla dice «faltan 3 motores» | Hay binarios obligatorios sin encontrar | Ajustes → *Motor vivo*: el que falta aparece en rojo con su nombre |
 | Aliyun Pan pide sesión | Falta el login del CLI | `aliyunpan login` una vez en tu terminal |

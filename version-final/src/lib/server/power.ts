@@ -8,7 +8,7 @@
 //  · Siempre con cuenta atrás (60 s por defecto) y un botón para cancelar.
 //  · `spawn` con argumentos en array, sin shell: no hay texto de usuario aquí.
 //  · Si el sistema no lo soporta, se dice; no se finge que funcionó.
-import { spawn } from "node:child_process";
+import { lanzarSuelto } from "./proc";
 
 let apagadoEn: number | null = null;
 let ultimoDetalle = "";
@@ -37,9 +37,9 @@ export function programarApagado(segundos = 60): { ok: boolean; error?: string; 
   const seg = Math.max(15, Math.min(3600, Math.round(segundos)));
   try {
     if (process.platform === "win32") {
-      spawn("shutdown", ["/s", "/t", String(seg), "/c", "Linyue: la cola de descargas ha terminado."], { windowsHide: true, detached: true, stdio: "ignore" }).unref();
+      lanzarSuelto("shutdown", ["/s", "/t", String(seg), "/c", "Linyue: la cola de descargas ha terminado."], { detached: true });
     } else {
-      spawn("shutdown", ["-h", `+${Math.max(1, Math.ceil(seg / 60))}`], { detached: true, stdio: "ignore" }).unref();
+      lanzarSuelto("shutdown", ["-h", `+${Math.max(1, Math.ceil(seg / 60))}`], { detached: true });
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo programar el apagado" };
@@ -53,8 +53,8 @@ export function programarApagado(segundos = 60): { ok: boolean; error?: string; 
 export function cancelarApagado(): { ok: boolean; error?: string } {
   if (!apagadoEn) return { ok: true };
   try {
-    if (process.platform === "win32") spawn("shutdown", ["/a"], { windowsHide: true, detached: true, stdio: "ignore" }).unref();
-    else spawn("shutdown", ["-c"], { detached: true, stdio: "ignore" }).unref();
+    if (process.platform === "win32") lanzarSuelto("shutdown", ["/a"], { detached: true });
+    else lanzarSuelto("shutdown", ["-c"], { detached: true });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo cancelar" };
   }

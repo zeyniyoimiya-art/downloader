@@ -7,6 +7,8 @@ import { browserUAFor } from "@/lib/shared/args";
 import { getEngines, isHealthy, MOCK, resolveEngine } from "@/lib/server/engines";
 import { runCapture } from "@/lib/server/jobs";
 import { cookieFile, getConfig } from "@/lib/server/store";
+import { alturasDe, claveSonda, guardarSonda, leerSonda, tamanoDe } from "@/lib/server/probe-cache";
+import { explicarError } from "@/lib/shared/errores";
 export const dynamic = "force-dynamic";
 
 // ── Control de sondas ────────────────────────────────────────────────────────
@@ -35,6 +37,14 @@ export async function POST(req: Request) {
     .map((p) => routeEngine(d, p, { altEngineCN: cfg.altEngineCN, healthy: isHealthy })))];
   const engine = motores[0];
   const base = { url: d.url, platform: d.label, color: d.color, kind: d.kind, engine, engines: motores };
+  // ── Caché ────────────────────────────────────────────────────────────────
+  // Si esta misma URL se sondeó hace menos de 10 min (porque pulsaste «Vista
+  // previa», o porque el trabajo ya la consultó), se responde al instante. Es la
+  // diferencia entre 8 s y 20 ms al abrir la ficha por segunda vez.
+  if (!MOCK) {
+    const guardada = leerSonda(claveSonda(d.url, parsed.data.mode));
+    if (guardada) return Response.json({ ...guardada.respuesta, cache: true });
+  }
   // Spotify: yt-dlp se niega en rotundo ("[DRM] known to use DRM protection") y
   // un link de Spotify siempre acaba en spotdl, así que la vista previa NUNCA
   // funcionaba. Su API pública de oEmbed da título, autor y carátula sin
@@ -88,7 +98,7 @@ export async function POST(req: Request) {
   }
   // Reaprovechar sondas idénticas en vuelo
   const ya = enVuelo.get(d.url);
-  if (ya) return Response.json(await ya);
+  if (ya) return Response.json(await ya); // ya resuelve al objeto de la ficha
 
   // Sondamos SIEMPRE que el binario exista, sin fiarnos del flag de salud.
   // `isHealthy` sale de un escaneo cacheado que puede haberse quedado corto por
@@ -101,7 +111,12 @@ export async function POST(req: Request) {
     return Response.json({ ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: "Demasiadas vistas previas a la vez; se reintentará al bajar la cola" });
   }
   activas++;
-  const tarea = (async () => {
+  // OJO: esta promesa resuelve a un OBJETO, no a un `Response`. Antes devolvía
+  // `Response.json(...)` y luego se envolvía otra vez con `Response.json(await
+  // tarea)`, que serializa un objeto Response → «{}». Resultado: la sonda en
+  // frío contestaba 2 bytes, la ficha se quedaba en «Inspeccionando…» para
+  // siempre y parecía que la vista previa «tardaba muchísimo».
+  const tarea = (async (): Promise<Record<string, unknown>> => {
   try {
     const args = ["--dump-single-json", "--no-playlist", "--skip-download", "--flat-playlist"];
     args.push(...browserUAFor(d.url)); // Bilibili WAF: sin UA de navegador no devuelve formatos
@@ -111,25 +126,31 @@ export async function POST(req: Request) {
     // sondeo lanza además su propio proceso de JS para generar el token, y con
     // varias sondas en paralelo eso pasa de 30 s con facilidad. Con 30 s las
     // fichas se quedaban en "timeout" y nunca se rellenaban.
-    const j = JSON.parse(await runCapture("yt-dlp", [...args, "--", d.url], 90000));
-    const heights = [...new Set(((j.formats ?? []) as { height?: number }[]).map((f) => f.height).filter((h): h is number => !!h))].sort((a, b) => b - a);
+    // `--retries 1` y 20 s: si el sitio no contesta rápido, es mejor decirlo que
+    // dejar al usuario mirando «Inspeccionando…» durante minuto y medio. Los
+    // reintentos por defecto de yt-dlp (10 con backoff) son los que convertían
+    // un fallo de red en 90 s de espera.
+    const crudo = await runCapture("yt-dlp", [...args, "--retries", "1", "--fragment-retries", "1", "--extractor-retries", "1", "--socket-timeout", "15", "--", d.url], 20000);
+    const j = JSON.parse(crudo);
+    const heights = alturasDe(j);
     // Tamaño aproximado: sirve para avisar "esto son 2,1 GB" antes de descargar
     // (y para que el planificador compruebe el disco).
-    const fs2 = ((j.formats ?? []) as { filesize?: number; filesize_approx?: number; vcodec?: string }[]);
-    const tam = (f?: { filesize?: number; filesize_approx?: number }) => f?.filesize ?? f?.filesize_approx ?? 0;
-    const mayor = fs2.filter((f) => f.vcodec && f.vcodec !== "none").sort((a, b) => tam(b) - tam(a))[0];
-    const size = Number(j.filesize_approx ?? tam(mayor) ?? 0) || undefined;
+    const size = tamanoDe(j);
     const note = motores.join(" + ") !== "yt-dlp" ? `Se descargará con ${motores.join(" + ")}` : undefined;
     const fecha = typeof j.upload_date === "string" && j.upload_date.length === 8
       ? `${j.upload_date.slice(6, 8)}/${j.upload_date.slice(4, 6)}/${j.upload_date.slice(0, 4)}`
       : undefined;
     const views = typeof j.view_count === "number" ? j.view_count : undefined;
-    return Response.json({ ...base, title: j.title || d.url, author: j.uploader || j.channel || "", duration: j.duration || 0, thumbnail: j.thumbnail || "", heights, size, entries: j.entries?.length, date: fecha, views, note });
+    const respuesta = { ...base, title: j.title || d.url, author: j.uploader || j.channel || "", duration: j.duration || 0, thumbnail: j.thumbnail || "", heights, size, entries: j.entries?.length, date: fecha, views, note };
+    // Se guarda el crudo (lo reusa el trabajo) y la respuesta ya montada.
+    guardarSonda(claveSonda(d.url, parsed.data.mode), j, respuesta);
+    return respuesta;
   } catch (e) {
     // Devolvemos el motivo REAL en vez de un mensaje genérico: así se ve si fue
     // por cookies, por un link privado o porque el sitio cambió.
-    const motivo = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").trim().slice(0, 180);
-    return Response.json({ ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: `Se usará ${motores.join(" + ")}; sin vista previa${motivo ? ` — ${motivo}` : ""}` });
+    const crudo = e instanceof Error ? e.message : String(e);
+    const ex = explicarError(crudo);
+    return { ...base, title: d.url, author: "", duration: 0, thumbnail: "", heights: [], note: `Se usará ${motores.join(" + ")}. Sin vista previa: ${ex.titulo}` };
   }
   })();
   enVuelo.set(d.url, tarea);

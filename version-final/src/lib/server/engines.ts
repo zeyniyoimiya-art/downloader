@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { EngineId } from "../shared/platforms";
 import { getConfig } from "./store";
+import { lanzarSuelto } from "./proc";
 
 export interface EngineDef {
   id: EngineId;
@@ -163,7 +164,7 @@ const VERSION_TIMEOUT_MS = 25000;
 function killProc(p: ChildProcess) {
   if (!p.pid) return;
   try {
-    if (process.platform === "win32") spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { shell: false, windowsHide: true });
+    if (process.platform === "win32") lanzarSuelto("taskkill", ["/pid", String(p.pid), "/T", "/F"]);
     else process.kill(-p.pid, "SIGKILL");
   } catch {
     try { p.kill("SIGKILL"); } catch {}

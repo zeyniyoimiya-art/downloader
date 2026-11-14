@@ -24,7 +24,18 @@ export const sfx = {
   success: () => { tone(1318, 0.5, "sine", 0.05); tone(1976, 0.6, "sine", 0.035, 0.09); haptic([10, 40, 10]); },
   error: () => { tone(140, 0.25, "sine", 0.09, 0, 70); haptic(40); },
 };
-// Vibración háptica en móvil
+// Vibración háptica en móvil.
+//
+// Chrome lanza un aviso en consola («Blocked call to navigator.vibrate because
+// user hasn't tapped…») si se pide sin interacción previa, y en escritorio no
+// existe. Se comprueba antes: así la consola queda limpia y no se molesta al
+// navegador con llamadas que va a rechazar igual.
 export function haptic(p: number | number[]) {
-  try { navigator.vibrate?.(p); } catch {}
+  try {
+    if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
+    // `userActivation` no está en todos los navegadores; si no está, se prueba igual.
+    const activacion = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+    if (activacion && !activacion.hasBeenActive) return;
+    navigator.vibrate(p);
+  } catch {}
 }

@@ -71,6 +71,8 @@ export default function Home() {
   const [status, setStatus] = useState<{ files: number; outputDir: string; freeBytes?: number | null; freeLabel?: string | null }>({ files: 0, outputDir: "" });
   const [busy, setBusy] = useState(false);
   const [previews, setPreviews] = useState<Preview[] | null>(null);
+  // Segundos que lleva «Inspeccionando…»: si tarda, el usuario ve que avanza.
+  const [esperando, setEsperando] = useState(0);
   const links = useMemo(() => parseLinks(text), [text]);
   // Modos con sentido para los links pegados + el recomendado (preselección).
   const avail = useMemo(() => availableModes(links), [links]);
@@ -138,6 +140,7 @@ export default function Home() {
     const dest = links.slice(0, MAX_PREVIEWS);
     // Fichas tipo "studio": cada sonda pinta su tarjeta al terminar (van apareciendo)
     setPreviews(dest.map((l) => ({ url: l.url, platform: l.label, color: l.color, engine: routeEngine(l, mode) })));
+    setEsperando(0);
     const cola = [...dest];
     const obrero = async () => {
       while (cola.length) {
@@ -152,6 +155,28 @@ export default function Home() {
     await Promise.all(Array.from({ length: Math.min(PREVIEW_CONCURRENCIA, dest.length) }, obrero));
   };
 
+  // ── Precalentado de la ficha ─────────────────────────────────────────────
+  // Pegar un link y pulsar «Vista previa» costaba lo que tarda yt-dlp en extraer
+  // los metadatos: entre 1 y 20 s mirando «Inspeccionando…». Como el link ya se
+  // conoce en cuanto se pega, se lanza la sonda en segundo plano (con retardo
+  // para no sondear mientras se escribe) y la caché del servidor responde al
+  // instante cuando el usuario pulsa. Nunca se muestran esos resultados: solo
+  // calientan la caché.
+  const yaCalentado = useRef(new Set<string>());
+  useEffect(() => {
+    const objetivo = links.find((l) => !yaCalentado.current.has(l.url));
+    if (!objetivo) return;
+    const t = setTimeout(() => {
+      yaCalentado.current.add(objetivo.url);
+      void fetch("/api/probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-linyue": "1" },
+        body: JSON.stringify({ url: objetivo.url, mode }),
+      }).catch(() => {});
+    }, 700);
+    return () => clearTimeout(t);
+  }, [links, mode]);
+
   // Atajo Ctrl/Cmd+Enter = descargar.
   // El handler vive en un ref para registrar el listener UNA sola vez: antes el
   // efecto no tenía array de dependencias, así que quitaba y volvía a poner el
@@ -164,6 +189,16 @@ export default function Home() {
   }, []);
 
   const anyRunning = jobs.some((j) => j.state === "running" || j.state === "probing");
+  const pendientes = previews?.filter((p) => p.title === undefined && !p.error).length ?? 0;
+  useEffect(() => {
+    // Solo se arranca el cronómetro si hay fichas pendientes; el reinicio a 0 se
+    // hace al pintar la siguiente tanda (ver `preview()`), no dentro del efecto:
+    // un setState síncrono aquí dispara renders en cascada.
+    if (pendientes) {
+      const t = setInterval(() => setEsperando((s) => s + 1), 1000);
+      return () => clearInterval(t);
+    }
+  }, [pendientes]);
 
   return (
     <div className="space-y-8">
@@ -303,7 +338,7 @@ export default function Home() {
                 {p.date && <span className="mono absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] text-white">{p.date}</span>}
               </div>
               <div className="p-4">
-                <div className="line-clamp-2 text-sm font-semibold">{p.title ?? (p.error ? p.url : "Inspeccionando…")}</div>
+                <div className="line-clamp-2 text-sm font-semibold">{p.title ?? (p.error ? p.url : `Inspeccionando… ${esperando > 1 ? `${esperando} s` : ""}`)}</div>
                 <div className="muted mt-1 truncate text-xs">{[p.author, p.views != null ? fmtViews(p.views) : ""].filter(Boolean).join(" · ")}</div>
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
                   <span className="mono sq-pill flex items-center gap-1.5 bg-[var(--fill-2)] px-2 py-0.5"><span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }} />{p.platform}</span>
@@ -425,7 +460,10 @@ function Suscripciones({ formats }: { formats: Record<string, readonly string[]>
   const mostrarAlta = abierto || subs.length === 0;
 
   const enviar = async (cuerpo: Record<string, unknown>, metodo = "POST") => {
-    const r = await fetch("/api/subs", {
+    // DELETE lleva el id en la QUERY, no en el cuerpo: la ruta lo lee de la URL.
+    // Sin esto, quitar una suscripción devolvía 404 y no hacía nada.
+    const url = metodo === "DELETE" && cuerpo.id ? `/api/subs?id=${encodeURIComponent(String(cuerpo.id))}` : "/api/subs";
+    const r = await fetch(url, {
       method: metodo,
       headers: { "Content-Type": "application/json", "x-linyue": "1" },
       body: metodo === "DELETE" ? undefined : JSON.stringify(cuerpo),

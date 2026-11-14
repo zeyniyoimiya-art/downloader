@@ -124,7 +124,10 @@ function Island() {
   const live = useMemo(() => jobs.filter((j) => ["queued", "probing", "running", "post", "paused"].includes(j.state)), [jobs]);
   const speed = live.reduce((a, j) => a + (j.state === "running" ? j.speed : 0), 0);
   const avg = live.length ? live.reduce((a, j) => a + j.percent, 0) / live.length : 0;
-  const engineDown = engines.some((e) => e.health === "down");
+  // «motor caído» a secas no decía nada: ¿cuál? Ahora se nombra el que falta.
+  const caidos = engines.filter((e) => e.health === "down");
+  const engineDown = caidos.length > 0;
+  const etiquetaMotor = caidos.length === 1 ? `falta ${caidos[0].exe}` : `faltan ${caidos.length} motores`;
   const expanded = open && live.length > 0;
   const toggle = () => {
     const d = document as Document & { startViewTransition?: (cb: () => void) => unknown };
@@ -159,7 +162,7 @@ function Island() {
                 <span className="mono text-white/70">{fmtBytes(speed)}/s</span>
               </>
             ) : (
-              <span className="mx-auto flex items-center gap-1.5 text-white/70"><span className="h-1.5 w-1.5 rounded-full" style={{ background: engineDown ? "var(--warn-ink)" : "var(--red)", boxShadow: `0 0 8px ${engineDown ? "var(--warn-ink)" : "var(--red)"}` }} />{engineDown ? "motor caído" : "en reposo"}</span>
+              <span className="mx-auto flex items-center gap-1.5 whitespace-nowrap text-white/70" title={caidos.map((e) => e.exe).join(", ")}><span className="h-1.5 w-1.5 rounded-full" style={{ background: engineDown ? "var(--warn-ink)" : "var(--red)", boxShadow: `0 0 8px ${engineDown ? "var(--warn-ink)" : "var(--red)"}` }} />{engineDown ? etiquetaMotor : "en reposo"}</span>
             )}
           </div>
         ) : (

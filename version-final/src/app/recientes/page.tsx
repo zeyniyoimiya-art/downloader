@@ -4,7 +4,7 @@
 */
 // "/recientes": fichas de vidrio con búsqueda, filtros, menú contextual, preview local (Range) y parallax de carátulas.
 import { useEffect, useMemo, useState } from "react";
-import { Search, FolderOpen, Copy, RotateCcw, Trash2, Music2, Film, Image as ImageIcon, Headphones } from "lucide-react";
+import { Search, FolderOpen, Copy, RotateCcw, Trash2, Music2, Film, Image as ImageIcon, Headphones, AlertTriangle } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Panel } from "@/components/ui";
 import { fmtBytes, fmtDuration } from "@/lib/shared/progress";
@@ -40,13 +40,24 @@ export default function Recientes() {
 
   const act = async (kind: string, it: HistoryView) => {
     sfx.pop(); setMenu(null);
-    if (kind === "open") await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id }) });
+    if (kind === "open") {
+      const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id }) });
+      const d = await r.json().catch(() => ({}));
+      // Abrir «algo» sin decir qué es lo que hacía que el usuario acabara en una
+      // carpeta que no era la suya, sin saber por qué.
+      if (!r.ok) toast({ kind: "err", title: "No se pudo abrir", body: d.error });
+      else if (d.aviso) toast({ kind: "info", title: "El archivo ya no está", body: d.aviso });
+    }
     if (kind === "play") { const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ id: it.id, play: true }) }); if (!r.ok) toast({ kind: "err", title: "ffplay no disponible" }); }
     if (kind === "copy") { await navigator.clipboard.writeText(it.path); toast({ kind: "info", title: "Ruta copiada" }); }
     if (kind === "redo") {
       const fmtOk = /^[a-z0-9]{2,8}$/.test(it.format) ? it.format : "mp4";
-      await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
-      toast({ kind: "info", title: "Re-bajando", body: it.title });
+      const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ urls: [it.url], mode: ["audio", "video", "photo", "profile"].includes(it.mode) ? it.mode : "video", format: fmtOk, quality: "best" }) });
+      // Antes se decía «Re-bajando» aunque la petición hubiera fallado.
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) toast({ kind: "err", title: "No se pudo re-bajar", body: d.error });
+      else if (d.rejected?.length) toast({ kind: "err", title: "Ese link ya no vale", body: d.rejected[0] });
+      else toast({ kind: "info", title: "Re-bajando", body: it.title });
     }
     if (kind === "del") { await fetch(`/api/history?id=${it.id}`, { method: "DELETE", headers: { "x-linyue": "1" } }); setItems((x) => x?.filter((y) => y.id !== it.id) ?? null); }
   };
@@ -104,11 +115,16 @@ export default function Recientes() {
               </div>
               <div className="p-4">
                 <h3 className="line-clamp-2 text-sm font-semibold">{it.title}</h3>
+                {it.existe === false && (
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--warn-ink)" }} title={it.path}>
+                    <AlertTriangle size={12} strokeWidth={2} />El archivo ya no está en esa ruta
+                  </div>
+                )}
                 <dl className="muted mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
                   <dt>Autor</dt><dd className="truncate text-right">{it.author || "—"}</dd>
                   <dt>Fecha</dt><dd className="text-right">{it.date ? `${it.date.slice(0, 4)}-${it.date.slice(4, 6)}-${it.date.slice(6, 8)}` : new Date(it.createdAt).toLocaleDateString()}</dd>
                   <dt>Fuente</dt><dd className="text-right">{it.source}</dd>
-                  <dt>Peso · duración</dt><dd className="mono text-right">{fmtBytes(it.size)} · {fmtDuration(it.duration)}</dd>
+                  <dt>Peso · duración</dt><dd className="mono text-right">{it.size > 0 ? fmtBytes(it.size) : "—"} · {it.duration > 0 ? fmtDuration(it.duration) : "—"}</dd>
                 </dl>
                 <div className="mt-3 flex gap-1.5">
                   <button onClick={() => act("open", it)} className="btn btn-glass h-8 flex-1 text-xs sq-pill" aria-label="Abrir carpeta"><FolderOpen size={14} /></button>

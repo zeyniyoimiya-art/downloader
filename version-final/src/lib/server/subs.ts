@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DATA_DIR, getConfig } from "./store";
 import { enqueue } from "./jobs";
-import { MOCK } from "./engines";
+import { MOCK, resolveEngine } from "./engines";
 import {
   nuevosIds, parseListado, podarVistos, proximaRevision, tocaRevisar, urlDesdeId,
   horasValidas, type Sub,
@@ -87,6 +87,21 @@ export function editarSub(id: string, cambios: Partial<Pick<Sub, "everyHours" | 
   return sub;
 }
 
+/** Título legible del canal o de la lista («jawed - Videos» → «jawed»). */
+async function nombreDe(url: string): Promise<string | null> {
+  if (MOCK) return null;
+  const ytdlp = resolveEngine("yt-dlp");
+  if (!ytdlp) return null;
+  const r = await correr(ytdlp, [
+    "--flat-playlist", "--no-warnings", "--no-colors", "--playlist-end", "1",
+    "--print", "%(playlist_title|)s|%(uploader|)s|%(channel|)s", "--", url,
+  ], 30000);
+  if (r.code !== 0) return null;
+  const campos = (r.out.split(/\r?\n/).find((l) => l.trim()) ?? "").split("|").map((x) => x.trim());
+  const nombre = campos.find((x) => x.length > 0) ?? "";
+  return nombre.replace(/\s+-\s+(videos|shorts|streams|playlists|视频|短视频)$/i, "").trim() || null;
+}
+
 /** Ejecuta un motor y devuelve su salida (o el error), con timeout. */
 function correr(bin: string, args: string[], timeoutMs = 120000): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve) => {
@@ -117,7 +132,15 @@ export interface ResultadoRevision {
 export async function revisarSub(sub: Sub): Promise<ResultadoRevision> {
   const cfg = getConfig();
   const ahora = Date.now();
-  const ytdlp = path.join(process.cwd(), "vendor", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+  // OJO: el binario se llama `ytdlp.exe` en el ZIP (alias de yt-dlp). Buscarlo
+  // como «yt-dlp.exe» a pelo hacía que NINGUNA suscripción funcionara nunca.
+  const ytdlp = resolveEngine("yt-dlp");
+  if (!ytdlp) {
+    sub.lastCheck = ahora; sub.nextCheck = proximaRevision(sub.everyHours, ahora);
+    sub.lastResult = "error: yt-dlp no encontrado (Ajustes → Motor vivo)";
+    guardar();
+    return { ok: false, nuevos: 0, encolados: [], mensaje: sub.lastResult };
+  }
   const limite = Math.min(50, Math.max(10, cfg.profileLimit));
 
   let salida = "";
@@ -154,6 +177,14 @@ export async function revisarSub(sub: Sub): Promise<ResultadoRevision> {
     if (!url) continue; // sin URL fiable no se inventa nada
     enqueue([url], sub.mode as "audio" | "video" | "photo", sub.format, sub.quality, undefined, 0, { from: "sub" });
     encolados.push(url);
+  }
+
+  // Nombre legible: si la etiqueta sigue siendo la URL (nadie la escribió), se
+  // pregunta una sola vez por el título del canal/lista. Sin esto la lista de
+  // suscripciones era una columna de URLs.
+  if (!sub.label || sub.label === sub.url || /^https?:\/\//i.test(sub.label)) {
+    const nombre = await nombreDe(sub.url);
+    if (nombre) sub.label = nombre;
   }
 
   sub.seen = podarVistos([...ids, ...sub.seen]);
