@@ -15,7 +15,19 @@ import { normalizar } from "../shared/parecido";
 export interface PistaSpotify {
   title: string;
   artist: string;
+  /** Miniatura de oEmbed (300 px). La grande está en `artwork`. */
   thumbnail?: string;
+  /**
+   * Carátula de 640 px del `visualIdentity` del embed. oEmbed sólo da 300, así
+   * que ésta es la que se incrusta en el archivo: 640 es el máximo que Spotify
+   * publica sin sesión.
+   */
+  artwork?: string;
+  album?: string;
+  /** Género (lo rellena iTunes cuando se puede; Spotify no lo publica). */
+  genero?: string;
+  /** Año de publicación (`releaseDate`), para la etiqueta `date`. */
+  anio?: number;
   /** Por qué Spotify dice que no se puede reproducir («COUNTRY_RESTRICTED»…). */
   motivo?: string;
   duracionS?: number;
@@ -79,7 +91,17 @@ export function pistaDelEmbedHtml(html: string): Partial<PistaSpotify> | null {
   const t = track as Record<string, unknown>;
   const artistas = (t.artists as { name?: string }[]).map((a) => a?.name ?? "").filter(Boolean);
   const motivo = typeof t.playabilityReason === "string" && t.isPlayable === false ? t.playabilityReason : undefined;
+  // ── Carátula grande y año ────────────────────────────────────────────────
+  // El `visualIdentity` trae la misma imagen en 64/300/640. Se elige la mayor
+  // (no la primera: el orden no está garantizado). Comprobado en vivo.
+  const vi = (t.visualIdentity ?? {}) as { image?: { url?: string; maxWidth?: number }[] };
+  const imagenes = Array.isArray(vi.image) ? vi.image.filter((i) => i?.url) : [];
+  const mayor = imagenes.sort((a, b) => (b.maxWidth ?? 0) - (a.maxWidth ?? 0))[0];
+  const fecha = (t.releaseDate ?? {}) as { isoString?: string };
+  const anio = typeof fecha.isoString === "string" ? Number(fecha.isoString.slice(0, 4)) || undefined : undefined;
   return {
+    artwork: mayor?.url || undefined,
+    anio,
     // Sólo el PRIMER artista: YouTube acredita al principal, y «DJ铁柱, 酷炫»
     // como una sola cadena no aparece nunca en un título ni en un canal.
     artist: artistas[0] ?? "",
@@ -110,6 +132,9 @@ export async function metadatosSpotify(url: string): Promise<PistaSpotify | null
     title: base?.title ?? "",
     artist: base?.artist || extra?.artist || "",
     thumbnail: base?.thumbnail,
+    // 640 > 300: si el embed dio la grande, gana la grande.
+    artwork: extra?.artwork || base?.thumbnail,
+    anio: extra?.anio,
     motivo: extra?.motivo,
     duracionS: extra?.duracionS,
   };

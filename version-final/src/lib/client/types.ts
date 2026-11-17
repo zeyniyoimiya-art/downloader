@@ -24,4 +24,6 @@ export interface ConfigView {
   quietEnabled: boolean; quietFrom: string; quietTo: string;
   sponsorblock: "off" | "marcar" | "quitar"; sections: string; splitChapters: boolean;
   notify: boolean; apagarAlTerminar: boolean; subsEnabled: boolean; subsEveryHours: number;
+  /** Fase 18: metadatos completos, letras y carátula en tamaño original. */
+  embedTags: boolean; embedLyrics: boolean; coverOriginal: boolean; photoOriginal: boolean;
 }

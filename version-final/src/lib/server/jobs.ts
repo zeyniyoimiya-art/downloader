@@ -19,6 +19,11 @@ import { causaDeError, esErrorDeCookies, explicarError } from "../shared/errores
 import { claveSonda, guardarSonda, leerSonda, mejorAudioDe, tamanoDe } from "./probe-cache";
 import { autorDeRuta, tituloDeArchivo, tituloFinal } from "../shared/nombres";
 import { consultaDe, elegirCandidato, metadatosSpotify, puntuarCandidato, type Candidato } from "./spotify";
+import { normalizar } from "../shared/parecido";
+import { admiteEtiquetas, etiquetasDeSonda, fusionar, pareceMusica, type Etiquetas } from "../shared/etiquetas";
+import { etiquetarArchivo, esAudio as esAudioFinal, esVideo as esVideoFinal, inspeccionar } from "./etiquetar";
+import { COVERS_DIR, descargarImagen, portadaDeSonda } from "./portadas";
+import { buscarLetra } from "./letras";
 import { buscarEnITunes, consultaApple, esUrlApple, idApple, pistasApple, type PistaApple } from "./apple";
 
 /**
@@ -110,6 +115,13 @@ export interface Job {
   upconvert?: boolean;
   /** Segundos de espera impuestos por el rate limit, si los hubo. */
   cooldownMs?: number;
+  /**
+   * Etiquetas conocidas de antemano (Spotify, Apple, iTunes…). Se fusionan con
+   * lo que diga el JSON del sitio; lo que traiga aquí gana.
+   */
+  tags?: Etiquetas;
+  /** Ruta local de la carátula ya bajada para este trabajo. */
+  portada?: string;
 }
 
 // Limitador compartido por host (vive en el proceso, sobrevive a los jobs).
@@ -459,7 +471,7 @@ type FalloPista = { ok: false; tipo: "busqueda" | "sinCoincidencia" | "descarga"
 async function bajarPista(
   job: Job,
   opciones: Parameters<typeof buildArgs>[2],
-  pista: { title: string; artist: string; thumbnail?: string },
+  pista: { title: string; artist: string; thumbnail?: string; artwork?: string; album?: string; anio?: number; genero?: string },
   etiqueta: string,
 ): Promise<{ ok: true } | FalloPista> {
   // Dos intentos de búsqueda: con artista («顾北笙 风可懂我的思念») y sólo con el
@@ -513,6 +525,22 @@ async function bajarPista(
   if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
   if (pista.thumbnail && !job.thumbnail) job.thumbnail = pista.thumbnail;
 
+  // ── Metadatos de tienda (fase 18) ─────────────────────────────────────────
+  // Spotify/Apple saben el álbum, el género y el año; YouTube no. Se guardan en
+  // el trabajo para que el etiquetado final no tenga que volver a preguntar.
+  job.tags = fusionar(job.tags ?? {}, {
+    titulo: pista.title,
+    artista: pista.artist,
+    album: pista.album,
+    genero: pista.genero,
+    fecha: pista.anio ? String(pista.anio) : undefined,
+    comentario: job.url,
+  });
+  if (!job.portada && pista.artwork) {
+    const bajada = await descargarImagen(pista.artwork, path.join(COVERS_DIR, `job-${job.id}`));
+    if (bajada) { job.portada = bajada; job.thumbnail = pista.artwork; }
+  }
+
   let args: string[];
   try {
     args = buildArgs("yt-dlp", detectado, { ...opciones, outputDir: opciones.outputDir });
@@ -547,6 +575,25 @@ async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[
   // Restringida por país en Spotify: se apunta en el log, pero se INTENTA
   // YouTube igual (puede tenerla). No se promete nada que no se haya probado.
   if (pista.motivo === "COUNTRY_RESTRICTED") job.log.push("[spotify] Spotify marca la canción como restringida por país; se intenta YouTube igual");
+
+  // ── Completar la ficha con iTunes ─────────────────────────────────────────
+  // El embed de Spotify da título, artista y año, pero NO el álbum ni el
+  // género, y su carátula máxima son 640 px. iTunes da álbum, género y la
+  // portada a 1400 px. Sólo se acepta si el título y el artista coinciden: usar
+  // el álbum de otra canción sería peor que no poner álbum.
+  if (pista.artist && (!pista.album || !pista.artwork)) {
+    try {
+      const it = await buscarEnITunes(pista.title, pista.artist);
+      const mismo = it && normalizar(it.title) === normalizar(pista.title) && normalizar(it.artist).startsWith(normalizar(pista.artist).slice(0, 6));
+      if (it && mismo) {
+        pista.album = pista.album ?? it.album;
+        pista.artwork = it.artwork ?? pista.artwork;
+        pista.anio = pista.anio ?? it.anio;
+        pista.genero = it.genero;
+        job.log.push(`[spotify] iTunes completa la ficha: ${[it.album, it.genero, it.anio].filter(Boolean).join(" · ")}`);
+      }
+    } catch { /* sin iTunes se sigue: son extras */ }
+  }
   const r = await bajarPista(job, opciones, pista, "spotify");
   if (r.ok) return;
   const nombre = `«${pista.artist ? pista.artist + " - " : ""}${pista.title}»`;
@@ -649,6 +696,12 @@ async function bajarVistaPreviaApple(
   if (job.files.length < 500) job.files.push(destino);
   if (!job.title || /^https?:/i.test(job.title)) job.title = pista.title;
   if (pista.artwork) job.thumbnail = pista.artwork;
+  // La vista previa ya lleva carátula y cuatro campos; el etiquetado final añade
+  // álbum, género, año y (si existe) la letra.
+  job.tags = fusionar(job.tags ?? {}, {
+    titulo: pista.title, artista: pista.artist, album: pista.album,
+    genero: pista.genero, fecha: pista.anio ? String(pista.anio) : undefined, comentario: job.url,
+  });
   job.warning =
     "Apple Music entrega la canción con DRM, así que no hay audio completo que descargar: se guardó la vista previa de 30 s que Apple publica, con carátula y metadatos. " +
     "Para la canción entera, pega el mismo tema desde YouTube o Spotify.";
@@ -748,6 +801,83 @@ function killTree(p: ChildProcess) {
     if (process.platform === "win32") lanzarSuelto("taskkill", ["/pid", String(p.pid), "/T", "/F"]);
     else process.kill(-p.pid, "SIGKILL");
   } catch { try { p.kill("SIGKILL"); } catch {} }
+}
+
+/**
+ * Última pasada sobre los archivos descargados: etiquetas completas, carátula
+ * en su tamaño original y letra.
+ *
+ * Va al final a propósito. Si algo de aquí falla, el archivo YA está bajado y
+ * sigue siendo válido: por eso todo se hace con red (copia aparte, verificación
+ * y sólo entonces sustitución) y ningún fallo puede convertir un trabajo bueno
+ * en un error. Eso se prueba en `tests/etiquetas.test.ts`.
+ */
+async function completarMetadatos(job: Job, cfg: Config): Promise<void> {
+  if (MOCK) return;
+  if (!cfg.embedTags && !cfg.embedLyrics) return;
+  const archivos = job.files.filter((f) => admiteEtiquetas(f) && (esAudioFinal(f) || esVideoFinal(f)));
+  if (!archivos.length) return;
+
+  // 1) Etiquetas base: lo que sabe el trabajo (Spotify/Apple) manda sobre lo que
+  //    diga el JSON del sitio, que suele traer el título del vídeo y no la pista.
+  const sonda = leerSonda(claveSonda(job.url, job.mode));
+  const delSitio = etiquetasDeSonda(sonda?.crudo);
+  const base = fusionar(delSitio, job.tags ?? {});
+  // Un trabajo de audio es música casi siempre (para eso se bajó como audio);
+  // en vídeo se pide que la sonda lo parezca, para no buscar la letra de una
+  // receta o de un tutorial.
+  const esMusica = job.mode === "audio" || pareceMusica(sonda?.crudo, base);
+  const varios = archivos.length > 1;
+
+  // 2) Carátula: la de mayor resolución que publique el sitio, entera.
+  let portada: string | null = job.portada ?? null;
+  if (cfg.coverOriginal && !portada) portada = await portadaDeSonda(sonda?.crudo, job.id);
+  if (portada) job.log.push(`[etiquetas] carátula: ${path.basename(portada)}`);
+
+  // Una lista de 200 canciones no dispara 200 búsquedas de letra: se avisa y se
+  // hacen sólo las primeras, que es lo que alguien escucha de verdad.
+  const TOPE_LETRAS = 20;
+  let letrasHechas = 0;
+  let etiquetados = 0;
+  let conCaratula = 0;
+
+  for (const f of archivos) {
+    const audio = esAudioFinal(f);
+    // En varios archivos el título del JSON es el de la LISTA: el nombre del
+    // archivo es el de la pista. Se usan los mismos ayudantes que el historial.
+    const propias: Etiquetas = varios
+      ? { ...base, titulo: tituloDeArchivo(f) || base.titulo, artista: autorDeRuta(f, cfg.outputDir) || base.artista, album: base.album }
+      : base;
+
+    let letra: string | undefined;
+    if (cfg.embedLyrics && audio && esMusica && propias.titulo && letrasHechas < TOPE_LETRAS) {
+      const info = await inspeccionar(f);
+      const l = await buscarLetra({ titulo: propias.titulo, artista: propias.artista ?? "", album: propias.album, duracion: info?.duracion });
+      if (l) {
+        letra = l.texto;
+        letrasHechas++;
+        job.log.push(`[letras] ${path.basename(f)}: ${l.sincronizada ? "sincronizada" : "en texto"} (LRCLIB)`);
+      } else {
+        job.log.push(`[letras] ${path.basename(f)}: sin coincidencia fiable en LRCLIB (no se escribe nada)`);
+      }
+    }
+    if (cfg.embedLyrics && audio && esMusica && letrasHechas >= TOPE_LETRAS && archivos.length > TOPE_LETRAS) {
+      // Sólo se dice una vez.
+      if (letrasHechas === TOPE_LETRAS) { job.log.push(`[letras] ${archivos.length} pistas: se buscan letras de las ${TOPE_LETRAS} primeras`); letrasHechas++; }
+    }
+
+    const r = await etiquetarArchivo(f, cfg.embedTags ? { ...propias, letra } : { letra }, {
+      cover: portada,
+      sinCaratula: !cfg.coverOriginal,
+    });
+    if (r.ok) etiquetados++;
+    if (r.cover === "incrustada") conCaratula++;
+    if (r.motivo) job.log.push(`[etiquetas] ${path.basename(f)}: ${r.motivo}`);
+    else if (r.ok) job.log.push(`[etiquetas] ${path.basename(f)}: ${r.campos} campos${r.cover === "incrustada" ? " + carátula" : ""}`);
+  }
+  if (etiquetados) {
+    job.log.push(`[etiquetas] listo en ${etiquetados}/${archivos.length} archivo(s)${conCaratula ? `, carátula en ${conCaratula}` : ""}`);
+  }
 }
 
 async function probeMeta(job: Job) {
@@ -1087,7 +1217,12 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
       if (args && job.state !== "running") return;
       // Post-proceso: conversión de fotos con Magick
       job.state = "post"; job.percent = 100; emit();
-      if (job.mode === "photo" && cfg.photoFormat !== "original" && isHealthy("magick")) {
+      // «Guardar las fotos tal cual» (Ajustes, fase 18) manda sobre el formato
+      // elegido: convertir una foto es perder información que no vuelve.
+      if (job.mode === "photo" && cfg.photoOriginal && cfg.photoFormat !== "original") {
+        job.log.push(`[fotos] se guardan en su formato y tamaño originales (Ajustes: «no convertir las fotos»); se ignoró ${cfg.photoFormat.toUpperCase()}`);
+      }
+      if (job.mode === "photo" && !cfg.photoOriginal && cfg.photoFormat !== "original" && isHealthy("magick")) {
         const convertidos: string[] = [];
         for (const f of [...job.files]) {
           if (/\.(png|jpe?g|webp|gif|bmp|heic|tiff?|avif)$/i.test(f) && !f.toLowerCase().endsWith("." + cfg.photoFormat)) {
@@ -1193,6 +1328,13 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         }
         job.files = nuevos;
       }
+    // Etiquetas, carátula y letra (fase 18). Nunca puede tumbar el trabajo:
+    // completarMetadatos no lanza, y si algo sale mal el archivo queda igual.
+    {
+      try { await completarMetadatos(job, cfg); } catch (e) {
+        job.log.push(`[etiquetas] se omitió el etiquetado: ${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`);
+      }
+    }
     // Verificación final con ffprobe y escritura de historial
     const meta = (job as Job & { meta?: JobMeta }).meta;
     const files = job.files.length ? job.files : [];

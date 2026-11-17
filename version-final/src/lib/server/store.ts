@@ -145,6 +145,23 @@ noRepeat: z.boolean(),
   notify: z.boolean(),
   /** Apagar el equipo cuando la cola quede vacía (con 60 s para cancelar). */
   apagarAlTerminar: z.boolean(),
+  // ── Etiquetas, carátulas y letras (fase 18) ──
+  /**
+   * Escribir TODAS las etiquetas que se sepan (título, artista, álbum, género,
+   * fecha, pista, compositor, ISRC y la URL de origen). No recodifica nada:
+   * es `-c copy` con `-metadata`.
+   */
+  embedTags: z.boolean().default(true),
+  /** Buscar la letra (LRCLIB) y guardarla dentro del archivo. */
+  embedLyrics: z.boolean().default(true),
+  /** Bajar la carátula de mayor resolución, en su tamaño original. */
+  coverOriginal: z.boolean().default(true),
+  /**
+   * Guardar las fotos tal cual: apaga la conversión con Magick aunque haya un
+   * formato elegido. Redimensionar una foto descargada es perder información
+   * que ya no se recupera.
+   */
+  photoOriginal: z.boolean().default(true),
   /** Revisar los canales suscritos automáticamente. */
   subsEnabled: z.boolean(),
   /** Cada cuántas horas se revisan (1–168). */
@@ -161,7 +178,9 @@ export const defaultConfig = (): Config => ({
   enginePaths: {},
   audioFormat: "mp3",
   videoFormat: "mp4",
-  videoQuality: "1080",
+  // Sin tope: «la calidad más alta que permita el sitio». Antes era 1080 y el
+  // usuario que tenía un vídeo en 4K recibía 1080 sin saber por qué.
+  videoQuality: "best",
   photoFormat: "original",
   concurrency: 0,      // sin límite por defecto (ver maxConcurrency)
   maxConcurrency: 24,  // freno de seguridad del sistema
@@ -200,6 +219,12 @@ turbo: true,
   splitChapters: false,
   notify: false,
   apagarAlTerminar: false,
+  // Fase 18: completitud por defecto. Un archivo sin etiquetas ni portada es un
+  // archivo a medias, así que esto nace encendido.
+  embedTags: true,
+  embedLyrics: true,
+  coverOriginal: true,
+  photoOriginal: true,
   // Activo por defecto: si guardas un canal es porque quieres que se revise.
   // El interruptor de Ajustes existe para apagarlo del todo (viaje, datos…).
   subsEnabled: true,

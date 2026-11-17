@@ -55,14 +55,23 @@ const CODECS: { id: VideoCodec; label: string; title: string }[] = [
   { id: "vp9", label: "VP9", title: "el estándar de YouTube" },
 ];
 
-interface Preview { url: string; platform: string; color: string; engine: string; title?: string; author?: string; duration?: number; thumbnail?: string; heights?: number[]; error?: string; note?: string; entries?: number; date?: string; views?: number; size?: number }
+/**
+ * ¿La vista previa es una FOTO (y no un vídeo)? La sonda marca los enlaces de
+ * imagen como `post`/`gallery` y les da duración 0. Sólo entonces se enseña la
+ * imagen entera y en un marco 4:3; un vídeo sigue en 16:9.
+ */
+function esFoto(p: Preview): boolean {
+  return (p.kind === "post" || p.kind === "gallery" || p.kind === "photo") && !p.duration;
+}
+
+interface Preview { url: string; platform: string; color: string; engine: string; /** audio | video | photo… (lo manda la sonda) */ kind?: string; title?: string; author?: string; duration?: number; thumbnail?: string; heights?: number[]; error?: string; note?: string; entries?: number; date?: string; views?: number; size?: number }
 
 export default function Home() {
   const { jobs, toast, jobAction } = useApp();
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Mode | null>(null); // modo elegido a mano (null = seguir recomendación)
   const [format, setFormat] = useState("mp3");
-  const [quality, setQuality] = useState("1080");
+  const [quality, setQuality] = useState("best");
   const [codec, setCodec] = useState<VideoCodec>("auto");
   const [delay, setDelay] = useState(0); // minutos de retraso elegidos en la home
   const [sponsor, setSponsor] = useState<"off" | "marcar" | "quitar" | null>(null); // null = lo que diga Ajustes
@@ -330,10 +339,14 @@ export default function Home() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {previews.map((p, i) => (
             <Panel key={p.url} tilt className="rise overflow-hidden" >
-              <div className="relative aspect-video bg-black/30" style={{ animationDelay: `${i * 60}ms` }}>
+              {/* Una foto se enseña entera (`contain`) y en un marco 4:3; un
+                  vídeo, en 16:9. Con `aspect-video` + `object-cover` una imagen
+                  cuadrada salía recortada a horizontal: eso era lo de «me
+                  cambia el tamaño de la foto». */}
+              <div className={`relative bg-black/30 ${esFoto(p) ? "aspect-[4/3]" : "aspect-video"}`} style={{ animationDelay: `${i * 60}ms` }}>
                 {/* Placeholder debajo: si la portada no carga (onError) se ve él, no un icono roto */}
                 <div className={`absolute inset-0 grid place-items-center ${p.title || p.error ? "" : "skeleton"}`}><Sparkles className="opacity-30" /></div>
-                {p.thumbnail && <img src={p.thumbnail} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
+                {p.thumbnail && <img src={p.thumbnail} alt="" loading="lazy" decoding="async" className={`absolute inset-0 h-full w-full ${esFoto(p) ? "object-contain" : "object-cover"}`} referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
                 {!!p.duration && <span className="mono absolute bottom-2 right-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] text-white">{fmtDuration(p.duration)}</span>}
                 {p.date && <span className="mono absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] text-white">{p.date}</span>}
               </div>

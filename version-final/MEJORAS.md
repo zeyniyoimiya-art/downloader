@@ -532,3 +532,113 @@ tsc 0 · eslint 0 · vitest 425 en 18 archivos · next build ✓ · v1.7.0
 
 > El guardado es por navegador (`localStorage`), a propósito: cambiar de color
 > no debe esperar a un POST ni recargar la página. Lo que se ve es lo que hay.
+
+---
+
+## Fase 18 · Metadatos completos, carátula entera y letras (v1.8.0)
+
+Esta fase no añade funciones: cierra cuatro cosas que estaban a medias y que se
+notaban al mirar el archivo bajado, no la interfaz.
+
+### 1. Las fotos no tenían vista previa
+
+Había tres fallos sumados, y por eso «no funcionaba» de ninguna manera:
+
+| Sitio | Qué pasaba |
+|---|---|
+| `api/probe` | Al leer el JSON de gallery-dl se descartaba `url`, que es la URL real de la imagen. La ficha salía sin miniatura. |
+| Recientes | La rejilla usaba `aspect-video` + `object-cover`: una foto cuadrada se recortaba a 16:9. |
+| Recientes | La miniatura era `it.thumbnail`, la URL del CDN original: firma que caduca, CORS, o el archivo ya no está. |
+
+Ahora `/api/thumb?id=…&w=480` genera la miniatura **a partir del archivo local**
+(`-vf scale='min(iw,W)':-2`: nunca amplía, nunca recorta, mantiene la
+proporción) y la cachea con la fecha de modificación en la clave, de modo que si
+reetiquetas el archivo la miniatura se regenera sola. Para un audio extrae la
+carátula incrustada; para un vídeo, un fotograma al 10 % (el primero suele ser
+negro). Ya no depende de la red ni de que el CDN siga vivo.
+
+Comprobado en vivo con cuatro archivos reales:
+
+```
+mp3 con carátula 1400×1400 → 480×480     png cuadrado   → 480×480
+png vertical 800×1000      → 480×600     mp4 1280×720   → 480×270
+```
+
+### 2. «Metadatos» era sólo `--embed-metadata`
+
+yt-dlp escribía el bloque básico y ahí se acababa. Ahora, después de la
+recodificación (nunca antes: el archivo final es el que se etiqueta), una pasada
+con ffmpeg **`-c copy`** escribe título, artista, álbum, artista del álbum,
+género, fecha, pista, disco, compositor, comentario con la URL de origen, ISRC y
+la letra. Para ello `src/lib/shared/etiquetas.ts` sabe qué admite cada
+contenedor:
+
+| Contenedor | Etiquetas | Carátula |
+|---|---|---|
+| mp3 · m4a · flac | todas | incrustada, tamaño original |
+| opus · ogg | todas | **no** (el muxer rechaza `attached_pic`) |
+| mkv | `TITLE/ARTIST/DATE_RELEASED/GENRE/COMMENT` | adjunto, no pista de vídeo |
+| wav | chunk INFO (sin pista/disco) | no |
+| aac · ac3 | ninguna | no |
+
+Y cuando algo no se puede, se dice en el registro del trabajo (`[etiquetas] …:
+Opus no guarda carátula incrustada`) en vez de fingir. Un `.opus` con etiquetas y
+sin carátula es honesto; un `.opus` «con carátula» que no se puede abrir, no.
+
+El álbum, el género y el año, cuando la sonda no los trae (YouTube no los trae),
+se completan por la cadena iTunes de la fase 16, aceptando el resultado **sólo si
+el título normalizado coincide y el artista empieza igual**.
+
+### 3. Las letras no existían
+
+`src/lib/server/letras.ts` consulta LRCLIB (abierta, sin clave, con letra
+sincronizada). Lo importante no es buscar, es no equivocarse: la búsqueda de
+«Never Gonna Give You Up» devuelve veinte resultados y el primero es una versión
+japonesa de otro artista. Se puntúa título (60) + artista (40) + duración (±20)
+y por debajo de 60 no se escribe nada. Dentro del archivo va **texto plano
+siempre**: la etiqueta `lyrics` no entiende LRC, y si se guardaba la sincronizada
+tal cual, el reproductor enseñaba `<00:18.89>we're <00:19.25>no…`.
+
+Tope de 20 búsquedas por trabajo: una lista de 200 canciones avisa y no dispara
+200 peticiones.
+
+### 4. La carátula se recortaba al incrustarla
+
+La portada se pedía a `maxresdefault` (1280×720) y se veía como un cuadrado
+estirado, además de que la copia que quedaba para la interfaz no era la original.
+Ahora se elige la de **mayor área** entre las que publica el sitio (no la primera
+de la lista, cuyo orden no es estable; se descartan los sprites de storyboard,
+que son rejillas) y se incrusta **sin escalar**: 1400×1400 entra 1400×1400. En la
+vista previa se usa `object-contain`, nunca `object-cover`.
+
+### Un extra que salió al probar: `.exe` en Linux
+
+Al correr las pruebas en un clon limpio, el etiquetado fallaba con los binarios
+del repo delante. La causa: `resolveEngine` devolvía `vendor/ffmpeg.exe` también
+en Linux/macOS, donde ese archivo no se puede ejecutar (`ENOEXEC`) — y el
+inventario lo daba por «ok». Ahora los nombres `.exe` sólo valen en Windows; en
+el resto se resuelve por el PATH. En tu equipo (Windows) nada cambia.
+
+### Red de seguridad
+
+Todo el etiquetado se hace sobre una copia temporal: se escribe, se verifica con
+ffprobe (que el archivo siga teniendo audio y la misma duración) y sólo entonces
+se sustituye el original. Si algo falla, el archivo que ya estaba bajado queda
+intacto — hay una prueba que pasa un `.mp3` que en realidad es texto y comprueba
+que sigue byte a byte igual.
+
+### Ajustes
+
+Nueva sección **Metadatos, carátulas y letras**: etiquetas completas, letras,
+carátula original y «no convertir las fotos» (una foto de Instagram ya está en
+JPEG; pasarla a PNG la engorda sin ganar nada). Calidad de vídeo por defecto
+pasa a **la mejor disponible**.
+
+```
+tsc 0 · eslint 0 · vitest 495 en 22 archivos · next build ✓ · v1.8.0
+```
+
+Pruebas nuevas: `tests/etiquetas.test.ts` (29), `tests/letras.test.ts` (17),
+`tests/preview.test.ts` (11) y `tests/etiquetado-real.test.ts` (11, con ffmpeg
+de verdad: etiquetas, carátula 1200×1200 intacta, opus sin carátula, aac
+rechazado, webp convertido sin escalar, archivo corrupto preservado).

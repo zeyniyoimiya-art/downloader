@@ -52,8 +52,17 @@ export const ENGINES: EngineDef[] = [
   { id: "baidupcs", exe: "BaiduPCS-Go.exe", alt: ["baidupcs-go.exe", "BaiduPCS-Go"], bin: "BaiduPCS-Go", role: "Baidu Pan (necesita tu cuenta)", versionArgs: ["--version"], optional: true },
 ];
 
-// Nombres de archivo permitidos para cada motor (whitelist estricta)
-const allowedNames = (def: EngineDef): string[] => [def.exe, def.bin, ...def.alt].map((n) => n.toLowerCase());
+// Nombres de archivo permitidos para cada motor (whitelist estricta).
+//
+// En Windows los binarios de `vendor/` son `.exe`. En Linux y macOS esos
+// archivos también están en el repo (son los del usuario, no se borran) pero
+// NO se pueden ejecutar: `spawn` devolvía ENOEXEC y, peor, el inventario daba
+// ffmpeg por «ok» cuando en realidad no arrancaba. Ahí sólo valen los nombres
+// sin extensión, que se resuelven por el PATH del sistema.
+const allowedNames = (def: EngineDef): string[] => {
+  const todos = [def.exe, def.bin, ...def.alt].map((n) => n.toLowerCase());
+  return process.platform === "win32" ? todos : todos.filter((n) => !n.endsWith(".exe"));
+};
 
 export type Health = "ok" | "warn" | "down";
 export interface EngineStatus {

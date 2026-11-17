@@ -268,6 +268,31 @@ export default function Ajustes() {
           <ColorPicker />
 
           <Panel className="p-5">
+            <h2 className="mb-1 tick font-semibold tracking-tight">Metadatos, carátulas y letras</h2>
+            <p className="muted mb-2 text-xs">
+              Lo que queda <em>dentro</em> del archivo. Todo se escribe con <span className="mono">-c copy</span>:
+              ni el audio ni el vídeo se recodifican, y las imágenes nunca se escalan.
+            </p>
+            <Row label="Etiquetas completas" hint="título, artista, álbum, género, año, pista, disco, compositor, ISRC y la URL de origen">
+              <Toggle label="Etiquetas completas" checked={cfg.embedTags} onChange={(v) => set("embedTags", v)} />
+            </Row>
+            <Row label="Letras" hint={cfg.embedLyrics ? "busca en LRCLIB y guarda la letra dentro del audio (sólo si la coincidencia es clara)" : "apagado: no se consulta ninguna base de letras"}>
+              <Toggle label="Letras" checked={cfg.embedLyrics} onChange={(v) => set("embedLyrics", v)} />
+            </Row>
+            <Row label="Carátula original" hint="la de mayor resolución que publique el sitio, sin recortar ni escalar">
+              <Toggle label="Carátula original" checked={cfg.coverOriginal} onChange={(v) => set("coverOriginal", v)} />
+            </Row>
+            <Row label="No convertir las fotos" hint={cfg.photoOriginal ? `se guardan tal cual (se ignora «${cfg.photoFormat}»)` : `se convierten a ${cfg.photoFormat}`}>
+              <Toggle label="Fotos sin convertir" checked={cfg.photoOriginal} onChange={(v) => set("photoOriginal", v)} />
+            </Row>
+            <p className="muted mt-2 text-[11px] leading-relaxed">
+              Un <span className="mono">.opus</span>/<span className="mono">.ogg</span> guarda etiquetas y letra pero no carátula
+              (ffmpeg no puede escribir el bloque de imagen de Vorbis), y un <span className="mono">.aac</span> o{" "}
+              <span className="mono">.ac3</span> no admite etiquetas. Se dice en el registro del trabajo en vez de fingir que sí.
+            </p>
+          </Panel>
+
+          <Panel className="p-5">
           <h2 className="mb-1 tick font-semibold tracking-tight">Sistema</h2>
           <p className="muted mb-2 text-xs">Cosas que pasan cuando la cola se queda vacía.</p>
           <Row label="Avisar al terminar" hint={ESTADO_PERMISO[permiso]}>

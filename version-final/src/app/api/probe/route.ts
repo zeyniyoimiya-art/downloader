@@ -9,6 +9,7 @@ import { runCapture } from "@/lib/server/jobs";
 import { cookieFile, getConfig } from "@/lib/server/store";
 import { alturasDe, claveSonda, guardarSonda, leerSonda, tamanoDe } from "@/lib/server/probe-cache";
 import { explicarError } from "@/lib/shared/errores";
+import { autorDeGallerydl, portadaDeGallerydl, textoDeGallerydl, totalDeGallerydl } from "@/lib/server/galeria";
 export const dynamic = "force-dynamic";
 
 // ── Control de sondas ────────────────────────────────────────────────────────
@@ -75,14 +76,17 @@ export async function POST(req: Request) {
       const filas = Array.isArray(parsed) ? parsed : [parsed];
       const fila = filas[0];
       const info = (Array.isArray(fila) ? [...fila].reverse().find((x) => x && typeof x === "object" && !Array.isArray(x)) : fila) as Record<string, unknown> | undefined;
-      const autor = (info?.author ?? info?.user ?? {}) as Record<string, unknown>;
-      const texto = String(info?.content ?? info?.description ?? "").replace(/\s+/g, " ").trim();
-      const total = typeof info?.count === "number" ? info.count : undefined;
+      // El parseo vive en `galeria.ts` (y tiene pruebas): aquí sólo se usa.
+      const texto = textoDeGallerydl(parsed);
+      const total = totalDeGallerydl(parsed);
       return Response.json({
         ...base,
         title: texto || d.url,
-        author: String(autor.nick ?? autor.name ?? autor.username ?? ""),
-        duration: 0, thumbnail: "", heights: [],
+        author: autorDeGallerydl(parsed),
+        duration: 0,
+        // Vista previa real de la foto (antes siempre vacía → icono genérico).
+        thumbnail: portadaDeGallerydl(parsed),
+        heights: [],
         entries: total,
         note: `Se descargará con ${motores.join(" + ")}`,
       });
