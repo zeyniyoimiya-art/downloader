@@ -478,3 +478,57 @@ Verificación real (sandbox con red y ffmpeg, sin simulaciones):
 ```
 tsc 0 · eslint 0 · vitest 410 en 17 archivos · next build ✓ · v1.6.0
 ```
+
+---
+
+## Fase 17 · El color es tuyo, y la interfaz respira (v1.7.0)
+
+Hasta ahora el carmesí estaba escrito en 40 sitios del CSS y en cinco `rgba()`
+sueltos dentro de los componentes. Bonito, pero era *nuestro* color. Ahora es
+una variable que elige el usuario en **Ajustes → Color y movimiento**.
+
+### Un solo acento, en todas partes
+
+`src/lib/shared/tema.ts` es el modelo: `{ acento, acento2, brillo, fluidez }`,
+nueve paletas listas (Carmesí, Hielo, Jade, Ámbar, Violeta, Rosa, Oro, Menta,
+Grafito) y una normalización que no perdona: un hex mal escrito, un brillo de
+900 o un JSON viejo en `localStorage` caen al tema de fábrica en vez de dejar la
+interfaz sin acento.
+
+El CSS ya no sabe de rojos: de `--acento` / `--acento-2` / `--brillo` se derivan
+con `color-mix` los siete tokens que usaba todo el diseño (`--red`,
+`--red-bright`, `--red-deep`, `--red-wash`, `--red-line`, `--accent-ink`,
+`--shadow-red`), también en el tema claro, donde mezclan **hacia negro** en vez
+de hacia blanco (sobre papel un acento al 38 % con blanco no se lee).
+
+La aurora WebGL dejó de tener el rojo `vec3(0.62,0.05,0.10)` incrustado: ahora
+recibe `uA` / `uB` como uniforms y se recolorea en vivo cuando se cambia el
+color. El confeti también: sus partículas nacen del tono y la saturación reales
+del acento.
+
+### Detalle que evitaba un botón ilegible
+
+`--acento-tinta` sale de `contrasteSobre()` (luminancia relativa WCAG, umbral
+0.179, el punto donde negro y blanco empatan). Con ámbar u oro el texto del
+botón primario pasa a tinta oscura; con carmesí o violeta, a blanco. Antes era
+`color: #fff` fijo: elegir Oro dejaba un botón casi invisible.
+
+### Fluidez
+
+`extrema` (620 ms de muelle) · `suave` (380 ms) · `ninguna` (1 ms, y además
+apaga animaciones y congela la aurora). La aurora sube a **60 fps** en «extrema»
+y se queda en 30 en «suave» — el resto del tiempo hay un degradado de fondo, no
+un vídeo, y no merece la batería. `prefers-reduced-motion` sigue ganando sobre
+todo.
+
+Las tarjetas de la cola entran escalonadas 34 ms (`transform` + `opacity`, sin
+tocar layout; `backwards` para que la animación suelte el `transform` al terminar
+y no pelee con el arrastre), y la barra de progreso lleva un brillo que corre
+dentro de la barra ya pintada, sin JS.
+
+```
+tsc 0 · eslint 0 · vitest 425 en 18 archivos · next build ✓ · v1.7.0
+```
+
+> El guardado es por navegador (`localStorage`), a propósito: cambiar de color
+> no debe esperar a un POST ni recargar la página. Lo que se ve es lo que hay.

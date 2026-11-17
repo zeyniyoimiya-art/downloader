@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { setMuted, sfx } from "@/lib/client/sound";
 import { avisar } from "@/lib/client/notify";
 import type { EngineView, JobView } from "@/lib/client/types";
+import { normalizarTema, varsDeTema, TEMA_DEFECTO, type Tema } from "@/lib/shared/tema";
 
 export interface Toast { id: number; kind: "ok" | "err" | "info"; title: string; body?: string }
 interface Ctx {
@@ -14,6 +15,9 @@ interface Ctx {
   toast: (t: Omit<Toast, "id">) => void;
   theme: "dark" | "light";
   toggleTheme: () => void;
+  /** Color y movimiento elegidos en Ajustes (localStorage, sin servidor). */
+  tema: Tema;
+  setTema: (t: Tema) => void;
   muted: boolean;
   toggleMute: () => void;
   confetti: number;
@@ -37,6 +41,19 @@ const themeSnap = (): "dark" | "light" => {
   const t = localStorage.getItem("ly-theme") as "dark" | "light" | null;
   return t ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
 };
+// ── Tema con color propio ────────────────────────────────────────────────────
+// Se guarda en localStorage como JSON y se aplica escribiendo variables CSS en
+// <html>. Así el cambio es instantáneo (sin POST ni recarga) y cada navegador
+// puede tener el suyo. `getServerSnapshot` fijo para no romper la hidratación.
+const TEMA_KEY = "ly-tema";
+const temaSnap = (): Tema => {
+  if (typeof window === "undefined") return TEMA_DEFECTO;
+  try { return normalizarTema(JSON.parse(localStorage.getItem(TEMA_KEY) ?? "null")); } catch { return TEMA_DEFECTO; }
+};
+const guardarTema = (t: Tema) => {
+  try { localStorage.setItem(TEMA_KEY, JSON.stringify(t)); } catch {}
+  emitPref();
+};
 const mutedSnap = (): boolean => typeof window !== "undefined" && localStorage.getItem("ly-muted") === "1";
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -45,6 +62,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const theme = useSyncExternalStore(subscribePref, themeSnap, () => "dark" as const);
   const muted = useSyncExternalStore(subscribePref, mutedSnap, () => false);
+  const tema = useSyncExternalStore(subscribePref, temaSnap, () => TEMA_DEFECTO);
+  // Aplicar color/movimiento: variables CSS + atributo para el CSS de fluidez.
+  useEffect(() => {
+    const raiz = document.documentElement;
+    for (const [k, v] of Object.entries(varsDeTema(tema))) raiz.style.setProperty(k, v);
+    raiz.dataset.fluidez = tema.fluidez;
+    // La aurora WebGL (Ambient) escucha este evento para recolorear su shader.
+    dispatchEvent(new CustomEvent("ly-tema", { detail: tema }));
+  }, [tema]);
+  const setTema = useCallback((t: Tema) => guardarTema(normalizarTema(t)), []);
   const [confetti, setConfetti] = useState(0);
   // Avisos del sistema: el permiso se pide en Ajustes (dentro de un clic), aquí
   // solo se consulta si están activados en config.json.
@@ -114,8 +141,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // las 7 tarjetas de modo, los chips…) cada vez que llegaba un evento SSE,
   // o sea 10 veces por segundo durante una descarga. Era el grueso del lag.
   const value = useMemo<Ctx>(
-    () => ({ jobs, engines, rescan, toasts, toast, theme, toggleTheme, muted, toggleMute, confetti, jobAction }),
-    [jobs, engines, rescan, toasts, toast, theme, toggleTheme, muted, toggleMute, confetti, jobAction],
+    () => ({ jobs, engines, rescan, toasts, toast, theme, toggleTheme, tema, setTema, muted, toggleMute, confetti, jobAction }),
+    [jobs, engines, rescan, toasts, toast, theme, toggleTheme, tema, setTema, muted, toggleMute, confetti, jobAction],
   );
   return <C.Provider value={value}>{children}</C.Provider>;
 }

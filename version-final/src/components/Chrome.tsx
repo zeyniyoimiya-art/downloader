@@ -7,6 +7,7 @@ import { AlertTriangle, BarChart3, CheckCircle2, Clock, Cookie, Download, Info, 
 import { useApp } from "./AppProvider";
 import { Logo, Ring, Segmented } from "./ui";
 import { fmtBytes } from "@/lib/shared/progress";
+import { contrasteSobre } from "@/lib/shared/tema";
 
 const TABS = [
   { href: "/", label: "Descargador", icon: Download },
@@ -84,6 +85,7 @@ export function Chrome() {
  * esté viva (justo cuando más falta hace es al final de la cola).
  */
 function ApagadoBanner() {
+  const { tema } = useApp();
   const [en, setEn] = useState<number | null>(null);
   const [queda, setQueda] = useState(0);
   useEffect(() => {
@@ -101,6 +103,9 @@ function ApagadoBanner() {
     return () => clearInterval(t);
   }, [en]);
   if (!en) return null;
+  // El relleno es el acento, y el acento lo elige el usuario: el texto tiene
+  // que cambiar de claro a oscuro según el color (ámbar claro → tinta).
+  const tinta = contrasteSobre(tema.acento);
   const cancelar = async () => {
     await fetch("/api/power", { method: "POST", headers: { "Content-Type": "application/json", "x-linyue": "1" }, body: JSON.stringify({ action: "cancelar" }) });
     setEn(null);
@@ -112,7 +117,7 @@ function ApagadoBanner() {
         <span className="text-xs text-white/85">
           La cola terminó · el equipo se apaga en <span className="num font-semibold text-white">{queda}</span> s
         </span>
-        <button onClick={cancelar} className="btn sq-pill px-3 py-1 text-[11px] font-semibold" style={{ background: "var(--red)", color: "#fff" }}>Cancelar apagado</button>
+        <button onClick={cancelar} className="btn sq-pill px-3 py-1 text-[11px] font-semibold" style={{ background: "var(--red)", color: tinta }}>Cancelar apagado</button>
       </div>
     </div>
   );
@@ -148,7 +153,7 @@ function Island() {
         style={{
           viewTransitionName: "island", background: "rgba(6,6,7,.94)", backdropFilter: "blur(14px)",
           border: "1px solid var(--stroke)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,.06), 0 20px 50px -18px rgba(0,0,0,.9), 0 0 24px -12px rgba(225,18,43,.8)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,.06), 0 20px 50px -18px rgba(0,0,0,.9), 0 0 24px -12px color-mix(in oklab, var(--acento) 80%, transparent)",
           width: expanded ? "min(440px, 94vw)" : live.length ? 210 : 128, height: expanded ? Math.min(80 + live.length * 58, 380) : 36,
           borderRadius: expanded ? 32 : 999, transition: "width 650ms var(--spring), height 650ms var(--spring), border-radius 650ms var(--spring)",
         }}

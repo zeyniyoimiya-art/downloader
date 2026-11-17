@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { RefreshCw, Save, RotateCcw, Cpu, Keyboard, DownloadCloud, X, AlertTriangle } from "lucide-react";
 import { useApp } from "@/components/AppProvider";
 import { Logo, Panel, Segmented, Toggle } from "@/components/ui";
+import { ColorPicker } from "@/components/ColorPicker";
 import { sfx } from "@/lib/client/sound";
 import { leerPermiso, pedirPermiso, refrescarPermiso, suscribirPermiso, type PermisoAvisos } from "@/lib/client/notify";
 import type { ConfigView } from "@/lib/client/types";
@@ -260,9 +261,11 @@ export default function Ajustes() {
         <div className="space-y-6">
           <Panel className="p-5">
             <h2 className="mb-1 tick font-semibold tracking-tight">Apariencia y sonido</h2>
-            <Row label="Tema" hint="Carbón y carmesí · el claro es hueso, no pastel"><Segmented options={[{ value: "dark", label: "Carbón" }, { value: "light", label: "Hueso" }]} value={theme} onChange={(v) => v !== theme && toggleTheme()} /></Row>
+            <Row label="Tema" hint="Carbón u hueso · el acento y la fluidez se eligen abajo"><Segmented options={[{ value: "dark", label: "Carbón" }, { value: "light", label: "Hueso" }]} value={theme} onChange={(v) => v !== theme && toggleTheme()} /></Row>
           <Row label="Sonidos de interfaz" hint="Web Audio sintetizado"><Toggle label="Sonido" checked={!muted} onChange={toggleMute} /></Row>
           </Panel>
+
+          <ColorPicker />
 
           <Panel className="p-5">
           <h2 className="mb-1 tick font-semibold tracking-tight">Sistema</h2>

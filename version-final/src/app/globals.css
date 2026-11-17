@@ -49,15 +49,26 @@
   --spec: rgba(255, 255, 255, 0.07);
   --scrim: rgba(5, 5, 6, 0.55);
 
-  /* Acento único: carmesí */
-  --red: #e1122b;
-  --red-bright: #ff2d45;
-  --red-deep: #7d0b1a;
-  --red-wash: rgba(225, 18, 43, 0.10);
-  --red-line: rgba(225, 18, 43, 0.42);
-  /** Para TEXTO pequeño el carmesí puro no llega a AA sobre negro: este sí. */
-  --accent-ink: #ff7d8c;
-  --accent-ink-soft: rgba(255, 125, 140, 0.68);
+  /* ── Acento ────────────────────────────────────────────────────────────
+     NADA de esto es fijo: `--acento` y `--acento-2` los escribe el usuario en
+     Ajustes → Color (src/lib/shared/tema.ts). Todo lo demás se DERIVA con
+     color-mix, así una paleta nueva recolorea halos, hairlinas, foco y barras
+     sin tocar un solo componente. `--brillo` (0..1) manda en la intensidad. */
+  --acento: #e1122b;
+  --acento-2: #ff2d45;
+  --brillo: 0.62;
+  /** Tinta sobre relleno de acento. El provider la recalcula por luminancia. */
+  --acento-tinta: #fff;
+  --red: var(--acento);
+  --red-bright: color-mix(in oklab, var(--acento-2) 88%, white);
+  --red-deep: color-mix(in oklab, var(--acento) 46%, black);
+  --red-wash: color-mix(in oklab, var(--acento) 10%, transparent);
+  --red-line: color-mix(in oklab, var(--acento) 42%, transparent);
+  --red-glow: color-mix(in oklab, var(--acento) calc(var(--brillo) * 70%), transparent);
+  /** Para TEXTO pequeño el acento puro no llega a AA sobre negro: este sí. */
+  --accent-ink: color-mix(in oklab, var(--acento) 38%, white);
+  --accent-ink-soft: color-mix(in oklab, var(--acento) 26%, white);
+  --accent-grad: linear-gradient(135deg, var(--acento) 0%, var(--acento-2) 100%);
 
   /* Estados: semánticos y sobrios, no neón */
   --ok-ink: #62d9a2;
@@ -65,7 +76,7 @@
   --danger-ink: #ff7d8c;
 
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 60px -40px rgba(0, 0, 0, 0.95), 0 2px 8px -4px rgba(0, 0, 0, 0.8);
-  --shadow-red: 0 0 0 1px rgba(225, 18, 43, 0.35), 0 18px 50px -28px rgba(225, 18, 43, 0.55);
+  --shadow-red: 0 0 0 1px color-mix(in oklab, var(--acento) 35%, transparent), 0 18px 50px -28px color-mix(in oklab, var(--acento) calc(var(--brillo) * 62%), transparent);
   --grain: 0.035;
   color-scheme: dark;
 }
@@ -86,18 +97,20 @@
   --fill-2: rgba(16, 15, 16, 0.075);
   --spec: rgba(255, 255, 255, 0.8);
   --scrim: rgba(255, 255, 255, 0.5);
-  --red: #c20d24;
-  --red-bright: #e1122b;
-  --red-deep: #8d0b1a;
-  --red-wash: rgba(194, 13, 36, 0.07);
-  --red-line: rgba(194, 13, 36, 0.38);
-  --accent-ink: #ab0b1f;
-  --accent-ink-soft: rgba(171, 11, 31, 0.72);
+  /* Igual que en carbón, pero los derivados se calculan hacia el NEGRO: sobre
+     papel un acento al 38 % con blanco sería ilegible. */
+  --red: var(--acento);
+  --red-bright: color-mix(in oklab, var(--acento-2) 78%, black);
+  --red-deep: color-mix(in oklab, var(--acento) 60%, black);
+  --red-wash: color-mix(in oklab, var(--acento) 9%, transparent);
+  --red-line: color-mix(in oklab, var(--acento) 40%, transparent);
+  --accent-ink: color-mix(in oklab, var(--acento) 76%, black);
+  --accent-ink-soft: color-mix(in oklab, var(--acento) 58%, black);
   --ok-ink: #0f7a53;
   --warn-ink: #8a6100;
   --danger-ink: #ab0b1f;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 24px 50px -36px rgba(30, 20, 15, 0.35), 0 2px 6px -4px rgba(30, 20, 15, 0.18);
-  --shadow-red: 0 0 0 1px rgba(194, 13, 36, 0.28), 0 18px 40px -30px rgba(194, 13, 36, 0.45);
+  --shadow-red: 0 0 0 1px color-mix(in oklab, var(--acento) 30%, transparent), 0 18px 40px -30px color-mix(in oklab, var(--acento) 55%, transparent);
   --grain: 0.02;
   color-scheme: light;
 }
@@ -189,9 +202,9 @@ body::after {
 .bar-line { background: linear-gradient(90deg, transparent, var(--red) 50%, transparent); }
 
 /* Tarjeta de modo elegible: marco carmesí al seleccionar (antes era un ring fucsia). */
-.sel { box-shadow: inset 0 0 0 1px var(--red-line), 0 18px 40px -30px rgba(225, 18, 43, 0.9); }
-.grad-red { background: linear-gradient(155deg, rgba(225, 18, 43, 0.22), rgba(255, 255, 255, 0.015) 70%); color: var(--accent-ink); }
-:root.light .grad-red { background: linear-gradient(155deg, rgba(194, 13, 36, 0.12), rgba(16, 15, 16, 0.02) 70%); }
+.sel { box-shadow: inset 0 0 0 1px var(--red-line), 0 18px 40px -30px color-mix(in oklab, var(--acento) 90%, transparent); }
+.grad-red { background: linear-gradient(155deg, color-mix(in oklab, var(--acento) 22%, transparent), rgba(255, 255, 255, 0.015) 70%); color: var(--accent-ink); }
+:root.light .grad-red { background: linear-gradient(155deg, color-mix(in oklab, var(--acento) 12%, transparent), rgba(16, 15, 16, 0.02) 70%); }
 /* Insignias de estado de las cookies */
 .badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
 .badge-ok { background: color-mix(in oklab, var(--ok-ink) 16%, transparent); color: var(--ok-ink); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ok-ink) 35%, transparent); }
@@ -229,12 +242,12 @@ body::after {
 
 /* Primario: carmesí sólido. Blanco sobre #e1122b = 4.6:1 (AA). */
 .btn-primary {
-  color: #fff;
+  color: var(--acento-tinta);
   background: linear-gradient(180deg, var(--red-bright), var(--red) 55%, var(--red-deep));
   border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 12px 30px -14px rgba(225, 18, 43, 0.85);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 12px 30px -14px color-mix(in oklab, var(--acento) 85%, transparent);
 }
-.btn-primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 16px 40px -14px rgba(225, 18, 43, 1); }
+.btn-primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 16px 40px -14px var(--acento); }
 /* Secundario: placa con filete. El hover sube el borde a carmesí: es el único
    «aviso» de interactividad además del cursor. */
 .btn-glass {
@@ -248,7 +261,7 @@ body::after {
    texto no, porque un textarea grande con halo rojo parece un error. */
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--red), 0 0 22px 2px rgba(225, 18, 43, 0.45) !important;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--red), 0 0 22px 2px color-mix(in oklab, var(--acento) 45%, transparent) !important;
 }
 input:focus-visible, textarea:focus-visible, select:focus-visible {
   box-shadow: 0 0 0 1px var(--red) !important;
@@ -297,7 +310,7 @@ input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; b
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 14px; height: 14px; border-radius: 999px;
   background: var(--red); border: 2px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--red-line), 0 2px 8px rgba(225, 18, 43, 0.6); cursor: pointer;
+  box-shadow: 0 0 0 1px var(--red-line), 0 2px 8px color-mix(in oklab, var(--acento) 60%, transparent); cursor: pointer;
 }
 input[type="range"]::-moz-range-thumb {
   width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: 999px;
@@ -324,8 +337,8 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; backgro
 
 /* Contraste reforzado del sistema */
 @media (prefers-contrast: more) {
-  :root { --muted: rgba(244, 244, 245, 0.86); --faint: rgba(244, 244, 245, 0.7); --stroke: rgba(255, 255, 255, 0.34); --line: rgba(255, 255, 255, 0.28); --red: #ff2d45; --accent-ink: #ff9aa6; }
-  :root.light { --muted: rgba(16, 15, 16, 0.9); --faint: rgba(16, 15, 16, 0.75); --stroke: rgba(16, 15, 16, 0.4); --line: rgba(16, 15, 16, 0.32); --red: #a30a1d; --accent-ink: #8d0b1a; }
+  :root { --muted: rgba(244, 244, 245, 0.86); --faint: rgba(244, 244, 245, 0.7); --stroke: rgba(255, 255, 255, 0.34); --line: rgba(255, 255, 255, 0.28); --red: var(--acento-2); --accent-ink: color-mix(in oklab, var(--acento) 55%, white); }
+  :root.light { --muted: rgba(16, 15, 16, 0.9); --faint: rgba(16, 15, 16, 0.75); --stroke: rgba(16, 15, 16, 0.4); --line: rgba(16, 15, 16, 0.32); --red: var(--acento); --accent-ink: color-mix(in oklab, var(--acento) 62%, black); }
   body::after { display: none; }
   .lens { display: none; }
 }
@@ -336,3 +349,72 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; backgro
   .lens { display: none; }
   .lightline::after { display: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FLUIDEZ · el ajuste «extrema / suave / ninguna» de Ajustes → Color
+   ───────────────────────────────────────────────────────────────────────────
+   «extrema» empuja los muelles a 620 ms con la curva --spring (rebote real).
+   «ninguna» deja la app sin animaciones: imprescindible en portátiles viejos,
+   escritorios remotos y para quien lo pida por accesibilidad. También se
+   respeta prefers-reduced-motion aunque el ajuste diga «extrema».
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-fluidez="extrema"] { --dur: 620ms; }
+:root[data-fluidez="suave"] { --dur: 380ms; }
+:root[data-fluidez="ninguna"] { --dur: 1ms; }
+:root[data-fluidez="ninguna"] *,
+:root[data-fluidez="ninguna"] *::before,
+:root[data-fluidez="ninguna"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ── Entrada escalonada de la cola ─────────────────────────────────────────
+   Cada tarjeta entra 34 ms después que la anterior (máx. 10 saltos). Es puro
+   transform+opacity: la GPU lo hace sin tocar layout, así que se sostiene a
+   120 Hz sin despeinarse. */
+@keyframes subir { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); } to { opacity: 1; transform: none; } }
+.subir { animation: subir var(--dur) var(--spring) backwards; }
+.subir-1 { animation-delay: 34ms; } .subir-2 { animation-delay: 68ms; } .subir-3 { animation-delay: 102ms; }
+.subir-4 { animation-delay: 136ms; } .subir-5 { animation-delay: 170ms; } .subir-6 { animation-delay: 204ms; }
+.subir-7 { animation-delay: 238ms; } .subir-8 { animation-delay: 272ms; } .subir-9 { animation-delay: 306ms; }
+.subir-10 { animation-delay: 340ms; }
+
+/* ── Barra de progreso con brillo que corre ────────────────────────────────
+   El degradado se desplaza dentro de la barra ya pintada (`background-position`
+   sobre un gradiente del ancho del doble). Cero JS: el estado sigue viniendo
+   del SSE y esto sólo le pone luz. */
+@keyframes correr { from { background-position: 0 0; } to { background-position: -200% 0; } }
+.progreso-vivo {
+  background-image: linear-gradient(90deg,
+    var(--acento) 0%, var(--acento-2) 25%, color-mix(in oklab, var(--acento-2) 55%, white) 38%,
+    var(--acento-2) 52%, var(--acento) 75%, var(--acento) 100%);
+  background-size: 200% 100%;
+  animation: correr 2.6s linear infinite;
+}
+
+/* ── Halo del acento: lo usan el botón principal y la isla ───────────────── */
+.halo { box-shadow: 0 0 0 1px var(--red-line), 0 18px 60px -26px var(--red-glow); }
+.halo-fuerte { box-shadow: 0 0 0 1px var(--red-line), 0 24px 80px -24px color-mix(in oklab, var(--acento) calc(var(--brillo) * 95%), transparent); }
+
+/* ── Elevación al pasar el puntero: sólo transform (nada de layout) ──────── */
+.lift { transition: transform var(--dur) var(--spring), box-shadow var(--dur) var(--spring); will-change: transform; }
+.lift:hover { transform: translate3d(0, -2px, 0); }
+
+/* ── Texto con degradado de acento (titulares, cifras grandes) ──────────── */
+.ink-accent {
+  background: linear-gradient(96deg, var(--accent-ink) 0%, color-mix(in oklab, var(--acento-2) 60%, white) 55%, var(--accent-ink) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Respeta el «no animar» incluso en animaciones escritas en línea. */
+:root[data-fluidez="ninguna"] .progreso-vivo { animation: none; }

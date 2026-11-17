@@ -420,8 +420,13 @@ function Queue({ jobs, jobAction }: { jobs: ReturnType<typeof useApp>["jobs"]; j
         {jobs.map((j, i) => {
           const dragging = drag?.id === j.id;
           return (
-            <li key={j.id} className="scrim flex items-center gap-3 border border-[var(--line)] p-3 sq-sm"
-              style={{ transform: dragging ? `translateY(${drag.y}px) scale(1.02)` : "none", transition: dragging ? "none" : "transform 500ms var(--spring)", zIndex: dragging ? 10 : 0, position: "relative", boxShadow: dragging ? "0 20px 40px -10px rgba(0,0,0,.5)" : undefined }}>
+            // `subir`: entra con transform+opacity y un retardo de 34 ms por
+            // posición (máx. 10). Es animación de entrada, no de estado: el
+            // `backwards` de la clase suelta el transform al terminar para no
+            // pelearse con el arrastre, que escribe transform en línea.
+            <li key={j.id} className="scrim subir flex items-center gap-3 border border-[var(--line)] p-3 sq-sm"
+              style={{ animationDelay: `${Math.min(i, 9) * 34}ms`, transform: dragging ? `translateY(${drag.y}px) scale(1.02)` : "none", transition: dragging ? "none" : "transform 500ms var(--spring)", zIndex: dragging ? 10 : 0, position: "relative", boxShadow: dragging ? "0 20px 40px -10px rgba(0,0,0,.5)" : undefined }}>
+              {j.state === "running" && <span aria-hidden className="progreso-vivo absolute bottom-0 left-0 h-[2px] rounded-full" style={{ width: `${Math.max(1, Math.min(100, j.percent))}%` }} />}
               <button aria-label="Reordenar" onPointerDown={(e) => onDown(e, j.id, i)} className="muted cursor-grab touch-none"><GripVertical size={16} /></button>
               <Ring value={j.state === "done" ? 100 : j.percent} speed={j.state === "running" ? j.speed : 0} color={j.state === "error" ? "var(--danger-ink)" : j.state === "done" ? "var(--ok-ink)" : "var(--red)"} size={40}>{j.state === "done" ? "✓" : `${Math.round(j.percent)}`}</Ring>
               <div className="min-w-0 flex-1">

@@ -83,7 +83,7 @@ export function Segmented<T extends string>({ options, value, onChange, classNam
   };
   return (
     <div ref={wrap} role="tablist" aria-orientation="horizontal" onKeyDown={onKeyDown} className={`glass sq-pill relative flex p-1 ${className}`}>
-      <span aria-hidden className="absolute top-1 bottom-1 sq-pill" style={{ left: pill.left, width: pill.width, background: "linear-gradient(180deg, rgba(225,18,43,.20), rgba(225,18,43,.08))", boxShadow: "inset 0 0 0 1px var(--red-line), 0 6px 18px -10px rgba(225,18,43,.9)", transform: stretch ? "scaleX(1.12) scaleY(.92)" : "none", transition: "left 560ms var(--spring), width 560ms var(--spring), transform 300ms var(--spring)" }} />
+      <span aria-hidden className="absolute top-1 bottom-1 sq-pill" style={{ left: pill.left, width: pill.width, background: "linear-gradient(180deg, color-mix(in oklab, var(--acento) 20%, transparent), color-mix(in oklab, var(--acento) 8%, transparent))", boxShadow: "inset 0 0 0 1px var(--red-line), 0 6px 18px -10px color-mix(in oklab, var(--acento) 90%, transparent)", transform: stretch ? "scaleX(1.12) scaleY(.92)" : "none", transition: "left 560ms var(--spring), width 560ms var(--spring), transform 300ms var(--spring)" }} />
       {options.map((o) => (
         // tabIndex roving: solo la pestaña activa entra en el orden de tabulación,
         // y dentro del grupo se navega con las flechas (patrón WAI-ARIA).
@@ -97,7 +97,7 @@ export function Segmented<T extends string>({ options, value, onChange, classNam
 
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <button role="switch" aria-checked={checked} aria-label={label} onClick={() => { sfx.pop(); onChange(!checked); }} className="relative h-7 w-12 shrink-0 sq-pill transition-colors" style={{ background: checked ? "linear-gradient(180deg, var(--red-bright), var(--red-deep))" : "var(--fill-2)", boxShadow: checked ? "inset 0 0 0 1px rgba(255,255,255,.14), 0 6px 18px -10px rgba(225,18,43,.9)" : "inset 0 0 0 1px var(--stroke)" }}>
+    <button role="switch" aria-checked={checked} aria-label={label} onClick={() => { sfx.pop(); onChange(!checked); }} className="relative h-7 w-12 shrink-0 sq-pill transition-colors" style={{ background: checked ? "linear-gradient(180deg, var(--red-bright), var(--red-deep))" : "var(--fill-2)", boxShadow: checked ? "inset 0 0 0 1px rgba(255,255,255,.14), 0 6px 18px -10px color-mix(in oklab, var(--acento) 90%, transparent)" : "inset 0 0 0 1px var(--stroke)" }}>
       <span className="absolute top-0.5 h-6 w-6 rounded-full" style={{ left: checked ? 22 : 2, background: checked ? "#fff" : "var(--muted)", transition: "left 500ms var(--spring)" }} />
     </button>
   );
