@@ -642,3 +642,42 @@ Pruebas nuevas: `tests/etiquetas.test.ts` (29), `tests/letras.test.ts` (17),
 `tests/preview.test.ts` (11) y `tests/etiquetado-real.test.ts` (11, con ffmpeg
 de verdad: etiquetas, carátula 1200×1200 intacta, opus sin carátula, aac
 rechazado, webp convertido sin escalar, archivo corrupto preservado).
+
+---
+
+## Fase 18.1 · El arranque dejaba una pestaña en blanco (v1.8.1)
+
+Al abrir `http://127.0.0.1:4173` salía «This page couldn't load». No era la app:
+era que **no había nadie escuchando en ese puerto**. `iniciar_linyue.bat` hacía
+esto en ese orden:
+
+```
+set PORT=4173
+start "" http://127.0.0.1:4173     ← abre el navegador
+call npx next start … -p 4173      ← arranca DESPUÉS
+```
+
+Entre una línea y la otra hay la compilación entera (20–60 s, y más la primera
+vez). Si algo fallaba antes de `next start` — sin conexión en `npm install`, un
+error de compilación, el puerto ocupado por un proceso zombi —, la ventana negra
+se cerraba sin dejar leer nada y en el navegador quedaba una pestaña muerta.
+
+Ahora el lanzador, que es el único archivo que cambia:
+
+1. comprueba que Node existe y, si no, lo dice con el enlace de descarga;
+2. instala dependencias sólo si faltan, y si falla **se queda abierta** con el
+   motivo;
+3. si ya hay algo en el 4173, reutiliza esa ventana en vez de chocar contra ella;
+4. compila con `npm run build` y, si falla, no arranca nada: se queda abierto
+   pidiendo las últimas 20 líneas;
+5. sirve, y abre el navegador **sólo cuando `/api/health` contesta 200**.
+
+Comprobado aquí con el mismo comando que usa el `.bat`:
+
+```
+npx next start -H 127.0.0.1 -p 4173
+→ /  200   /recientes  200   /ajustes  200   /api/health {"ok":true}
+```
+
+Si vuelve a salir la pestaña en blanco, ahora la ventana negra dice exactamente
+en qué paso se paró.
