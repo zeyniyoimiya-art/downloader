@@ -16,17 +16,104 @@ export interface PistaSpotify {
   title: string;
   artist: string;
   thumbnail?: string;
+  /** Por qué Spotify dice que no se puede reproducir («COUNTRY_RESTRICTED»…). */
+  motivo?: string;
+  duracionS?: number;
+  /** Todos los artistas del track (el primero es el que se usa para buscar). */
+  artistas?: string[];
 }
 
-/** Metadatos del track con oEmbed (público, sin claves ni sesión). */
+/** El id del track, en cualquiera de las formas del link. */
+export function idTrackSpotify(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    if (!/(^|\.)spotify\.com$/i.test(u.hostname)) return null;
+    const p = u.pathname.split("/").filter(Boolean);
+    const i = p.indexOf("track");
+    const id = i >= 0 ? p[i + 1] : null;
+    return id && /^[A-Za-z0-9]{10,30}$/.test(id) ? id : null;
+  } catch { return null; }
+}
+
+const UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+/**
+ * Datos que oEmbed NO da: artista, duración y si la canción es reproducible.
+ *
+ * oEmbed devuelve sólo el título en muchísimos tracks (los chinos, por ejemplo),
+ * y sin artista la búsqueda en YouTube se va a otra canción. La página de
+ * *embed* sí trae el JSON completo (`__NEXT_DATA__`): artistas, duración y
+ * `playabilityReason` (p. ej. `COUNTRY_RESTRICTED`, que es la diferencia entre
+ * «no la encuentro» y «Spotify no la deja escuchar aquí»).
+ */
+export async function datosDelEmbed(id: string): Promise<Partial<PistaSpotify> | null> {
+  try {
+    const r = await fetch(`https://open.spotify.com/embed/track/${encodeURIComponent(id)}`, {
+      headers: { "user-agent": UA_NAVEGADOR, "accept-language": "es,en" },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok) return null;
+    const html = await r.text();
+    return pistaDelEmbedHtml(html);
+  } catch { return null; }
+}
+
+/** Puro (para poder probarlo sin red): saca la pista del HTML del embed. */
+export function pistaDelEmbedHtml(html: string): Partial<PistaSpotify> | null {
+  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  let raiz: unknown;
+  try { raiz = JSON.parse(m[1]); } catch { return null; }
+
+  // Se busca el objeto del track: el que tiene «artists» y «duration».
+  let track: Record<string, unknown> | null = null;
+  const visitar = (n: unknown, prof = 0) => {
+    if (track || prof > 12 || !n || typeof n !== "object") return;
+    if (Array.isArray(n)) { for (const x of n) visitar(x, prof + 1); return; }
+    const o = n as Record<string, unknown>;
+    if (Array.isArray(o.artists) && typeof o.duration === "number") { track = o; return; }
+    for (const v of Object.values(o)) visitar(v, prof + 1);
+  };
+  visitar(raiz);
+  if (!track) return null;
+  const t = track as Record<string, unknown>;
+  const artistas = (t.artists as { name?: string }[]).map((a) => a?.name ?? "").filter(Boolean);
+  const motivo = typeof t.playabilityReason === "string" && t.isPlayable === false ? t.playabilityReason : undefined;
+  return {
+    // Sólo el PRIMER artista: YouTube acredita al principal, y «DJ铁柱, 酷炫»
+    // como una sola cadena no aparece nunca en un título ni en un canal.
+    artist: artistas[0] ?? "",
+    artistas,
+    duracionS: typeof t.duration === "number" ? Math.round(t.duration / 1000) : undefined,
+    motivo,
+  };
+}
+
+/**
+ * Metadatos del track: oEmbed (título y carátula) + página de embed (artista,
+ * duración y si se puede reproducir). Sin claves ni sesión.
+ */
 export async function metadatosSpotify(url: string): Promise<PistaSpotify | null> {
+  let base: PistaSpotify | null = null;
   try {
     const r = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(12000) });
-    if (!r.ok) return null;
-    const o = (await r.json()) as { title?: string; author_name?: string; thumbnail_url?: string };
-    if (!o.title) return null;
-    return { title: o.title, artist: o.author_name ?? "", thumbnail: o.thumbnail_url };
-  } catch { return null; }
+    if (r.ok) {
+      const o = (await r.json()) as { title?: string; author_name?: string; thumbnail_url?: string };
+      if (o.title) base = { title: o.title, artist: o.author_name ?? "", thumbnail: o.thumbnail_url };
+    }
+  } catch { /* sigue con el embed */ }
+
+  const id = idTrackSpotify(url);
+  const extra = id ? await datosDelEmbed(id) : null;
+  if (!base && !extra?.artist) return null;
+  const pista: PistaSpotify = {
+    title: base?.title ?? "",
+    artist: base?.artist || extra?.artist || "",
+    thumbnail: base?.thumbnail,
+    motivo: extra?.motivo,
+    duracionS: extra?.duracionS,
+  };
+  return pista.title || pista.artist ? pista : null;
 }
 
 /** Palabras que delatan una versión que NO es la original. */
@@ -57,7 +144,8 @@ export function puntuarCandidato(c: Candidato, pista: PistaSpotify): number {
   const autor = normalizar(`${c.uploader ?? ""} ${c.channel ?? ""}`);
   if (!titulo || !nTitulo) return 0;
 
-  const palabras = (t: string) => [...new Set(t.split(" ").filter((w) => w.length > 2))];
+  // Sin puntuación: «dj铁柱,» y «dj铁柱» tienen que ser la misma palabra.
+  const palabras = (t: string) => [...new Set(t.split(/[^0-9a-z\u00c0-\u024f\u4e00-\u9fff]+/).filter((w) => w.length > 2))];
   const parecido = (objetivo: string[]) => {
     if (!objetivo.length) return 0;
     let dentro = 0;
@@ -78,7 +166,7 @@ export function puntuarCandidato(c: Candidato, pista: PistaSpotify): number {
     if (artistEnCanal) nota += 8;
     // Si el artista no aparece NI en el título NI en el canal, casi siempre es
     // otra canción con el mismo nombre («bad guy» de otro grupo): se hunde.
-    if (!artistEnCanal && cubreArtista < 0.5) nota -= 45;
+    if (!artistEnCanal && cubreArtista === 0) nota -= 45;
   }
   if (/topic|vevo|official|records|music/i.test(`${c.uploader ?? ""} ${c.channel ?? ""}`)) nota += 5;
 

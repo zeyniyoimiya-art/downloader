@@ -3,7 +3,7 @@
 // Si se elige mal, el usuario pide «Espresso» de Sabrina Carpenter y recibe un
 // cover de karaoke o una versión sped-up. Estas pruebas fijan el criterio.
 import { describe, expect, it } from "vitest";
-import { consultaDe, elegirCandidato, puntuarCandidato, UMBRAL_CANDIDATO } from "@/lib/server/spotify";
+import { consultaDe, elegirCandidato, idTrackSpotify, pistaDelEmbedHtml, puntuarCandidato, UMBRAL_CANDIDATO } from "@/lib/server/spotify";
 
 const pista = { title: "Espresso", artist: "Sabrina Carpenter" };
 
@@ -76,5 +76,32 @@ describe("casos reales de la batería", () => {
     const pista2 = { title: "刀群舞 - Dj炫酷版", artist: "" };
     const cand = { id: "z", title: "刀群舞 (Dj炫酷版)", uploader: "DJ铁柱 - Topic" };
     expect(elegirCandidato([cand], pista2)?.id).toBe("z");
+  });
+});
+
+describe("artista del reproductor de Spotify", () => {
+  it("con el artista principal se acierta el tema chino que antes se rechazaba", () => {
+    const pista = { title: "刀群舞 - Dj炫酷版", artist: "DJ铁柱" };
+    const cand = { id: "1", title: "刀群舞 (Dj炫酷版)", uploader: "DJ铁柱 - Topic" };
+    expect(puntuarCandidato(cand, pista)).toBeGreaterThanOrEqual(UMBRAL_CANDIDATO);
+  });
+
+  it("saca artista y motivo del HTML del reproductor", () => {
+    const html = '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { state: { data: { entity: {
+        name: "风可懂我的思念",
+        artists: [{ name: "顾北笙" }, { name: "阮斯羽" }],
+        duration: 352677, isPlayable: false, playabilityReason: "COUNTRY_RESTRICTED",
+      } } } } } }) + "</script>";
+    const r = pistaDelEmbedHtml(html);
+    expect(r?.artist).toBe("顾北笙");
+    expect(r?.duracionS).toBe(353);
+    expect(r?.motivo).toBe("COUNTRY_RESTRICTED");
+  });
+
+  it("el id sale de cualquier forma del link", () => {
+    expect(idTrackSpotify("https://open.spotify.com/intl-es/track/3kr20Qo8Pdz7wGTmuQy4IA?si=x")).toBe("3kr20Qo8Pdz7wGTmuQy4IA");
+    expect(idTrackSpotify("https://open.spotify.com/track/7utPQvBz96trFogWCeXi1I")).toBe("7utPQvBz96trFogWCeXi1I");
+    expect(idTrackSpotify("https://example.com/track/abc")).toBeNull();
   });
 });

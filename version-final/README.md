@@ -319,6 +319,55 @@ ERROR: Unsupported URL: https://www.facebook.com/login/?next=https%3A%2F%2Fwww.f
 
 Eso es **falta de sesión** y ahora se explica como tal (Cookies → navegador).
 
+## Fase 16: Spotify — el artista que faltaba y el fallo contado por pasos
+
+Un link de Spotify fallaba con un traceback de PyInstaller y nada más. Al
+abrirlo salieron tres cosas distintas, y sólo una era de Spotify:
+
+**1. oEmbed no da el artista en muchos tracks.** Para `风可懂我的思念` devuelve
+`author_name: null`, así que la búsqueda en YouTube iba sólo con el título y
+traía **otras canciones**. Ahora, si oEmbed no trae artista, se lee la página del
+**reproductor embebido** (`/embed/track/<id>`), cuyo `__NEXT_DATA__` sí trae los
+artistas, la duración y `playabilityReason`. Se usa el **primer** artista (el que
+YouTube acredita) y se buscan dos consultas: «artista título» y sólo el título.
+
+**2. Cada fallo se cuenta como es.** Antes, cualquier problema acababa en «YouTube
+no tiene esa canción» — incluso cuando el problema era otro. Ahora:
+
+| Lo que pasó | Lo que dice la app |
+| --- | --- |
+| La búsqueda falló | «la búsqueda de … en YouTube falló → *(motivo del motor)*» |
+| Se encontró pero la descarga falló | «se encontró … en YouTube, pero la descarga falló → *(motivo real)*» |
+| No hay nada parecido | «YouTube no tiene …: los resultados eran otros temas («…»). No se bajó nada para no darte una canción equivocada» |
+| Spotify la bloquea | «… (Spotify además la marca como no disponible en tu país y no publica vista previa)» |
+
+El log de la tarjeta ahora muestra la **nota de cada candidato** con su canal
+(`0 «風的思念» (周子琰 - Topic)`), que es lo que permite ver por qué se rechazó.
+
+**3. Último recurso: el catálogo de Apple.** Si YouTube no tiene la canción, se
+busca en iTunes y, si aparece, se guarda su vista previa de 30 s con carátula y
+metadatos, avisando en la tarjeta. Es poco, pero es mejor que un error.
+
+### Verificado de punta a punta (sin mocks)
+
+```
+Spotify → spotdl no está → plan B
+  [spotify] plan B: buscando «DJ铁柱 刀群舞 - Dj炫酷版» en YouTube
+  [spotify] elegido: 刀群舞 (Dj炫酷版) (DJ铁柱 - Topic)
+  [spotify] rescatado: 1 archivo(s)
+  → DJ铁柱 - Topic/Audio/刀群舞 (Dj炫酷版) [UYmi6Q4fk-M].flac
+    ffprobe: flac 154,9 s · 35,4 MB · title/artist + carátula mjpeg ✔
+
+El track que falló (风可懂我的思念, 顾北笙):
+  [spotify] Spotify la marca como restringida por país; se intenta YouTube igual
+  [spotify] ningún resultado se parece … → 0 «風的思念» · 0 «…黄梅戏…»
+  → error: «YouTube no tiene «顾北笙 - 风可懂我的思念»: los resultados eran otros
+     temas («…»)... No se bajó nada para no darte una canción equivocada»
+```
+
+Ese tema no está en YouTube, no está en iTunes y Spotify no publica ni vista
+previa: **no hay nada que descargar**, y ahora lo dice con esas palabras.
+
 ## Estructura de las descargas
 
 ```

@@ -156,3 +156,39 @@ export async function metadatosApple(url: string): Promise<PistaApple | null> {
 export function consultaApple(p: PistaApple): string {
   return `${p.artist} ${p.title}`.replace(/["“”]/g, " ").replace(/\s+/g, " ").trim();
 }
+
+/**
+ * Busca una canción en el catálogo de iTunes por texto (para cuando YouTube no
+ * la tiene). Devuelve la que mejor coincide, o null.
+ *
+ * Es el último recurso: Apple publica 30 s sin DRM, y eso es mejor que un error
+ * cuando el usuario sólo quiere oír lo que ha pedido.
+ */
+export async function buscarEnITunes(titulo: string, artista: string): Promise<PistaApple | null> {
+  const term = `${artista} ${titulo}`.replace(/\s+/g, " ").trim();
+  if (!term) return null;
+  try {
+    const r = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=8&country=us`,
+      { signal: AbortSignal.timeout(12000) },
+    );
+    if (!r.ok) return null;
+    const j = (await r.json()) as { results?: ResultadoITunes[] };
+    const pistas = (j.results ?? []).map(aPista).filter((x): x is PistaApple => !!x && !!x.previewUrl);
+    if (!pistas.length) return null;
+    const palabras = (t: string) => t.toLowerCase().split(/[^0-9a-z\u00c0-\u024f\u4e00-\u9fff]+/).filter((w) => w.length > 2);
+    const objetivo = palabras(titulo);
+    const delArtista = palabras(artista);
+    let mejor: PistaApple | null = null;
+    let mejorNota = 0;
+    for (const p of pistas) {
+      const t = p.title.toLowerCase();
+      const cubre = objetivo.length ? objetivo.filter((w) => t.includes(w)).length / objetivo.length : 0;
+      const a = `${p.artist} ${p.album ?? ""}`.toLowerCase();
+      const artistaOk = delArtista.length ? delArtista.filter((w) => a.includes(w)).length / delArtista.length : 1;
+      const nota = cubre * 70 + artistaOk * 30;
+      if (nota > mejorNota) { mejorNota = nota; mejor = p; }
+    }
+    return mejorNota >= 60 ? mejor : null;
+  } catch { return null; }
+}

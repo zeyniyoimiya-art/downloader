@@ -453,3 +453,28 @@ leer ese link».
 ```
 tsc 0 · eslint 0 · vitest 407 en 17 archivos · next build ✓ · v1.5.1
 ```
+
+---
+
+## Fase 16 · Spotify: artista real, diagnóstico por pasos y vista previa como último recurso
+
+| Síntoma | Causa | Arreglo |
+| --- | --- | --- |
+| Un track de Spotify fallaba con el traceback de PyInstaller | spotdl murió y el plan B tampoco acertó, pero el motivo real se perdía | `rescatarSpotify` **lanza** con el motivo exacto: búsqueda, sin coincidencias, descarga o país restringido |
+| La búsqueda traía **otras canciones** | oEmbed devuelve `author_name: null` en muchos tracks (chinos, sobre todo) y se buscaba sólo por título | `datosDelEmbed()` lee `__NEXT_DATA__` del reproductor: artistas, duración y `playabilityReason`; se usa el primer artista y dos consultas |
+| Un fallo de descarga se anunciaba como «YouTube no tiene esa canción» | el plan B devolvía `false` sin distinguir | `bajarPista` devuelve `{ok}|{tipo: busqueda|sinCoincidencia|descarga, motivo}` y cada tipo tiene su mensaje |
+| Los candidatos rechazados no dejaban rastro | sólo se apuntaba el primero | log con **nota + título + canal** de los dos primeros |
+| «DJ铁柱, 酷炫» no aparecía nunca en un título | se comparaba la lista entera de artistas, con coma | palabras sin puntuación + primer artista + penalización sólo si no hay **ninguna** coincidencia |
+| Nada que ofrecer cuando YouTube no tiene el tema | — | `buscarEnITunes()`: vista previa de 30 s de Apple con carátula, con aviso en la tarjeta |
+
+Verificación real (sandbox con red y ffmpeg, sin simulaciones):
+
+```
+刀群舞 (Dj炫酷版)  → flac 154,9 s · 35,4 MB · title/artist + carátula ✔
+风可懂我的思念      → no está en YouTube ni en iTunes; COUNTRY_RESTRICTED
+                     → error honesto, sin descargar otra canción
+```
+
+```
+tsc 0 · eslint 0 · vitest 410 en 17 archivos · next build ✓ · v1.6.0
+```

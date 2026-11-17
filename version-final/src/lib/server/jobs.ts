@@ -18,8 +18,8 @@ import { programarApagado } from "./power";
 import { causaDeError, esErrorDeCookies, explicarError } from "../shared/errores";
 import { claveSonda, guardarSonda, leerSonda, mejorAudioDe, tamanoDe } from "./probe-cache";
 import { autorDeRuta, tituloDeArchivo, tituloFinal } from "../shared/nombres";
-import { consultaDe, elegirCandidato, metadatosSpotify, type Candidato } from "./spotify";
-import { consultaApple, esUrlApple, idApple, pistasApple, type PistaApple } from "./apple";
+import { consultaDe, elegirCandidato, metadatosSpotify, puntuarCandidato, type Candidato } from "./spotify";
+import { buscarEnITunes, consultaApple, esUrlApple, idApple, pistasApple, type PistaApple } from "./apple";
 
 /**
  * Convierte un cookies.txt (formato Netscape) en pares `nombre=valor`, que es lo
@@ -357,26 +357,19 @@ export function despertarCola(): void {
 }
 
 /**
- * PLAN B DE SPOTIFY.
+ * PLAN B DE SPOTIFY (y de cualquier link con metadatos pero sin audio).
  *
- * 1. Metadatos del track con oEmbed (público, sin credenciales).
- * 2. Búsqueda en YouTube con yt-dlp (`ytsearch5`) y puntuación de resultados:
- *    título, artista, canal oficial… y castigo a covers/remix/sped-up.
- * 3. Descarga del elegido con los MISMOS ajustes que una descarga normal
- *    (formato, carátula, metadatos, recortes…).
+ * 1. Metadatos del track: oEmbed (título y carátula) + página del reproductor
+ *    (artista, duración y si Spotify deja escucharla).
+ * 2. Búsqueda en YouTube con yt-dlp (`ytsearch5`): primero «artista título» y,
+ *    si no hay coincidencia, sólo el título. Puntuación con castigo a
+ *    covers/remix/sped-up y al artista equivocado.
+ * 3. Descarga del elegido con los MISMOS ajustes que una descarga normal.
  *
- * Devuelve true si dejó archivos en `job.files`. Si no, el error original sigue
- * su curso y el usuario ve la explicación en español.
+ * Si no hay nada que se parezca, LANZA con el motivo exacto: es mejor decir
+ * «YouTube no tiene esa canción» que bajar otra cosa o devolver el traceback de
+ * PyInstaller de spotdl.
  */
-/** Última línea con información útil del log de un trabajo de Spotify. */
-function falloSpotifyDe(job: Job, original: string): Error {
-  // Prioridad: una línea ERROR real del motor; si no, el aviso del plan B.
-  const linea = [...job.log].reverse().find((l) => /^\s*ERROR:/i.test(l))
-    ?? [...job.log].reverse().find((l) => /AudioProviderError|download error|no se parece|sin metadatos|no devolvió resultados/i.test(l));
-  const detalle = (linea ?? "").replace(/^\s*ERROR:\s*/i, "").trim();
-  return new Error(detalle ? `Spotify: ${detalle}` : `Spotify no entregó el audio: ${original.slice(0, 200)}`);
-}
-
 /**
  * Segundo intento cuando el sitio no tiene el formato pedido.
  *
@@ -461,37 +454,59 @@ function pathConVendor(): string {
  * los metadatos (título + artista) pero no el audio, así que buscan, puntúan y
  * bajan. Devuelve `false` sin lanzar: el que llama decide qué contar.
  */
+type FalloPista = { ok: false; tipo: "busqueda" | "sinCoincidencia" | "descarga"; motivo: string };
+
 async function bajarPista(
   job: Job,
   opciones: Parameters<typeof buildArgs>[2],
   pista: { title: string; artist: string; thumbnail?: string },
   etiqueta: string,
-): Promise<boolean> {
-  job.log.push(`[${etiqueta}] plan B: buscando «${pista.artist} ${pista.title}» en YouTube`);
-  const deno = resolveEngine("deno");
-  const buscar = ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", "--no-playlist"];
-  if (deno) buscar.push("--js-runtimes", `deno:${deno}`);
-  const consulta = pista.artist ? `${pista.artist} ${pista.title}` : pista.title;
-  buscar.push("--", `ytsearch5:${consulta.replace(/["“”]/g, " ").trim()}`);
-  let crudo = "";
-  try {
-    crudo = await runCapture("yt-dlp", buscar, 60000);
-  } catch (e) {
-    job.log.push(`[${etiqueta}] la búsqueda en YouTube falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
-    return false;
-  }
-  let entradas: Candidato[] = [];
-  try {
-    const j = JSON.parse(crudo) as { entries?: Candidato[] };
-    entradas = j.entries ?? [];
-  } catch { entradas = []; }
-  if (!entradas.length) { job.log.push(`[${etiqueta}] YouTube no devolvió resultados`); return false; }
+): Promise<{ ok: true } | FalloPista> {
+  // Dos intentos de búsqueda: con artista («顾北笙 风可懂我的思念») y sólo con el
+  // título. El primero acierta más cuando hay artista; el segundo salva los
+  // tracks cuyo artista no aparece igual en YouTube.
+  const consultas = [
+    (pista.artist ? `${pista.artist} ${pista.title}` : pista.title),
+    pista.title,
+  ].map((c) => c.replace(/["“”]/g, " ").replace(/\s+/g, " ").trim()).filter((c, i, a) => c && a.indexOf(c) === i);
 
-  const elegido = elegirCandidato(entradas, pista);
-  if (!elegido) { job.log.push(`[${etiqueta}] ningún resultado se parece lo suficiente`); return false; }
+  const deno = resolveEngine("deno");
+  let entradas: Candidato[] = [];
+  let elegido: Candidato | null = null;
+  let ultimoFallo: FalloPista | null = null;
+  for (const consulta of consultas) {
+    job.log.push(`[${etiqueta}] plan B: buscando «${consulta}» en YouTube`);
+    const buscar = ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", "--no-playlist"];
+    if (deno) buscar.push("--js-runtimes", `deno:${deno}`);
+    buscar.push("--", `ytsearch5:${consulta}`);
+    let crudo = "";
+    try {
+      crudo = await runCapture("yt-dlp", buscar, 60000);
+    } catch (e) {
+      const m = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+      job.log.push(`[${etiqueta}] la búsqueda en YouTube falló: ${m.slice(0, 150)}`);
+      ultimoFallo = { ok: false, tipo: "busqueda", motivo: m };
+      continue;
+    }
+    try {
+      const j = JSON.parse(crudo) as { entries?: Candidato[] };
+      entradas = j.entries ?? [];
+    } catch { entradas = []; }
+    if (!entradas.length) { job.log.push(`[${etiqueta}] YouTube no devolvió resultados`); continue; }
+    elegido = elegirCandidato(entradas, pista);
+    if (elegido) break;
+    // Diagnóstico honesto: se apunta la nota de los dos primeros, con su canal.
+    const detalle = entradas.slice(0, 2)
+      .map((c) => `${puntuarCandidato(c, pista)} «${(c.title ?? "").slice(0, 40)}» (${c.channel ?? c.uploader ?? "?"})`)
+      .join(" · ");
+    job.log.push(`[${etiqueta}] ningún resultado se parece lo suficiente → ${detalle}`);
+  }
+  if (!elegido) {
+    return ultimoFallo ?? { ok: false, tipo: "sinCoincidencia", motivo: entradas[0]?.title ?? "" };
+  }
   const url = elegido.webpage_url ?? elegido.url ?? (elegido.id ? `https://www.youtube.com/watch?v=${elegido.id}` : "");
   const detectado = url ? detect(url) : null;
-  if (!detectado) { job.log.push(`[${etiqueta}] el resultado no tiene una URL usable`); return false; }
+  if (!detectado) { job.log.push(`[${etiqueta}] el resultado no tiene una URL usable`); return { ok: false, tipo: "busqueda", motivo: "el resultado no tiene una URL usable" }; }
   job.log.push(`[${etiqueta}] elegido: ${elegido.title ?? url} (${elegido.uploader ?? "?"})`);
 
   // La ficha del trabajo pasa a describir la canción real.
@@ -503,29 +518,63 @@ async function bajarPista(
     args = buildArgs("yt-dlp", detectado, { ...opciones, outputDir: opciones.outputDir });
   } catch (e) {
     job.log.push(`[${etiqueta}] no se pudieron preparar los argumentos: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
-    return false;
+    return { ok: false, tipo: "descarga", motivo: `no se pudieron preparar los argumentos (${e instanceof Error ? e.message : String(e)})` };
   }
   let salida = "";
   try {
     salida = await runCapture("yt-dlp", args, 20 * 60_000);
   } catch (e) {
-    job.log.push(`[${etiqueta}] la descarga del resultado falló: ${(e instanceof Error ? e.message : String(e)).slice(0, 150)}`);
-    return false;
+    const m = (e instanceof Error ? e.message : String(e)).slice(0, 220);
+    job.log.push(`[${etiqueta}] la descarga del resultado falló: ${m.slice(0, 150)}`);
+    return { ok: false, tipo: "descarga", motivo: m };
   }
   const archivos = salida.split(/\r?\n/)
     .filter((l) => l.startsWith("LYF|"))
     .map((l) => l.slice(4).trim())
     .filter((f) => f && fs.existsSync(f));
   for (const f of archivos) if (!job.files.includes(f) && job.files.length < 500) job.files.push(f);
-  if (!archivos.length) { job.log.push(`[${etiqueta}] yt-dlp terminó sin archivos`); return false; }
+  if (!archivos.length) {
+    job.log.push(`[${etiqueta}] yt-dlp terminó sin archivos`);
+    return { ok: false, tipo: "descarga", motivo: "yt-dlp terminó sin dejar archivos" };
+  }
   job.log.push(`[${etiqueta}] rescatado: ${archivos.length} archivo(s)`);
-  return true;
+  return { ok: true };
 }
 
-async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<boolean> {
+async function rescatarSpotify(job: Job, opciones: Parameters<typeof buildArgs>[2]): Promise<void> {
   const pista = await metadatosSpotify(job.url);
-  if (!pista) { job.log.push("[spotify] sin metadatos: oEmbed no respondió"); return false; }
-  return bajarPista(job, opciones, pista, "spotify");
+  if (!pista) throw new Error("Spotify no devolvió los datos de esa canción (ni oEmbed ni la página del reproductor)");
+  // Restringida por país en Spotify: se apunta en el log, pero se INTENTA
+  // YouTube igual (puede tenerla). No se promete nada que no se haya probado.
+  if (pista.motivo === "COUNTRY_RESTRICTED") job.log.push("[spotify] Spotify marca la canción como restringida por país; se intenta YouTube igual");
+  const r = await bajarPista(job, opciones, pista, "spotify");
+  if (r.ok) return;
+  const nombre = `«${pista.artist ? pista.artist + " - " : ""}${pista.title}»`;
+  // Cada fallo se cuenta como es. Antes un error de descarga (p. ej. falta
+  // mutagen, o YouTube pidiendo cookies) se anunciaba como «YouTube no tiene
+  // esa canción», que era mentira y mandaba a buscar donde no era.
+  if (r.tipo === "descarga") throw new Error(`Spotify: se encontró ${nombre} en YouTube, pero la descarga falló → ${r.motivo}`);
+  if (r.tipo === "busqueda") throw new Error(`Spotify: la búsqueda de ${nombre} en YouTube falló → ${r.motivo}`);
+  // Último recurso: el catálogo de Apple. Publica 30 s sin DRM; es poco, pero
+  // es mejor que dejar al usuario sin nada (y se avisa en la tarjeta).
+  if (r.tipo === "sinCoincidencia") {
+    const deApple = await buscarEnITunes(pista.title, pista.artist);
+    if (deApple && (await bajarVistaPreviaApple(job, opciones, deApple))) {
+      job.log.push("[spotify] YouTube no la tenía; se guardó la vista previa de 30 s de Apple");
+      job.warning =
+        `YouTube no tiene «${pista.title}», así que se guardó la vista previa de 30 s del catálogo de Apple (con carátula y metadatos). ` +
+        "La canción completa no está disponible en ningún sitio abierto.";
+      return;
+    }
+  }
+  const otro = (r.motivo ?? "").slice(0, 40);
+  const restringida = pista.motivo === "COUNTRY_RESTRICTED" ? " (Spotify además la marca como no disponible en tu país y no publica vista previa)" : "";
+  throw new Error(
+    `YouTube no tiene ${nombre}` +
+    (otro ? `: los resultados eran otros temas («${otro}»)` : "") +
+    restringida +
+    ". No se bajó nada para no darte una canción equivocada",
+  );
 }
 
 /** Descarga una URL con redirecciones (vista previa y carátula de Apple). */
@@ -635,8 +684,8 @@ async function rescatarApple(job: Job, opciones: Parameters<typeof buildArgs>[2]
   for (const p of pistas) {
     if (job.state !== "running") break;
     job.percent = Math.round((bajadas / pistas.length) * 90); emit();
-    const ok = await bajarPista(job, opciones, { title: p.title, artist: p.artist, thumbnail: p.artwork }, "apple");
-    if (ok) { bajadas++; continue; }
+    const r = await bajarPista(job, opciones, { title: p.title, artist: p.artist, thumbnail: p.artwork }, "apple");
+    if (r.ok) { bajadas++; continue; }
     // Sin canción en YouTube: al menos la vista previa, que sí es legal y real.
     if (await bajarVistaPreviaApple(job, opciones, p)) bajadas++;
     // Álbum: si fallan dos seguidas, no se insiste con las 20 restantes.
@@ -1023,10 +1072,9 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
             }
             const motivo = e instanceof Error ? e.message : String(e);
             job.log.push(`[spotify] spotdl falló (${motivo.slice(0, 120)}); probando la vía directa`);
-            const rescatado = await rescatarSpotify(job, opcionesMotor);
-            // Si tampoco por la vía directa: error de verdad (nada de «listo»
-            // sin archivo), con la explicación en español de qué pasó.
-            if (!rescatado) throw falloSpotifyDe(job, motivo);
+            // Si tampoco por la vía directa, rescatarSpotify lanza con el
+            // motivo exacto (nada de «listo» sin archivo ni de traceback).
+            await rescatarSpotify(job, opcionesMotor);
           }
         }
         }
@@ -1034,8 +1082,7 @@ aria2Healthy: isHealthy("aria2c"), noRepeat: cfg.noRepeat, embedMetadata: cfg.em
         // spotdl también puede «terminar bien» sin bajar nada (sale con 0 tras
         // un AudioProviderError). Mismo plan B.
         job.log.push("[spotify] spotdl no dejó archivos; probando la vía directa");
-        const ok = await rescatarSpotify(job, opcionesMotor);
-        if (!ok && job.state === "running") throw falloSpotifyDe(job, "spotdl no dejó archivos");
+        if (job.state === "running") await rescatarSpotify(job, opcionesMotor);
       }
       if (args && job.state !== "running") return;
       // Post-proceso: conversión de fotos con Magick
