@@ -42,8 +42,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Chrome />
           {/* pb-40 en móvil: la barra flotante mide ~64 px y se comía la última fila de Ajustes */}
           <main className="mx-auto max-w-6xl px-4 pb-40 pt-10 sm:px-6 xl:pb-32">{children}</main>
-          {/* Service worker: cachea solo la UI, nunca descargas */}
-          <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator&&location.hostname.match(/^(localhost|127\\.0\\.0\\.1)$/))addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))` }} />
+          {/* ── Sin service worker, y se desinstala el que hubiera ──────────
+              Antes se registraba /sw.js para cachear el icono y el manifiesto.
+              El beneficio era nulo (esta app es local y siempre hay red) y el
+              riesgo, enorme: un service worker atascado en el origen
+              `127.0.0.1:4173` intercepta la navegación y el navegador enseña
+              «This page couldn't load» aunque el servidor esté perfectamente
+              arrancado — y recargar no lo arregla, porque el que falla es el
+              propio SW. Aquí se da de baja y se borran sus cachés. */}
+          <script dangerouslySetInnerHTML={{ __html: `try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister()})}).catch(function(){});if(window.caches)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){})}}catch(e){}` }} />
         </AppProvider>
       </body>
     </html>

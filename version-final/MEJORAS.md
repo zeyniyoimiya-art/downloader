@@ -681,3 +681,47 @@ npx next start -H 127.0.0.1 -p 4173
 
 Si vuelve a salir la pestaña en blanco, ahora la ventana negra dice exactamente
 en qué paso se paró.
+
+---
+
+## Fase 18.2 · «This page couldn't load» con el servidor arrancado (v1.8.2)
+
+El síntoma, ya con datos: `npx next start -H 127.0.0.1 -p 4173` decía
+`✓ Ready in 245ms`, y el navegador enseñaba su cartel de error. La prueba que lo
+cerró fue una página tonta servida por Node en **otro** puerto:
+
+```
+node -e "require('http').createServer((q,r)=>r.end('hola desde node')).listen(8099,'127.0.0.1')"
+→ http://127.0.0.1:8099  se ve perfectamente
+→ http://127.0.0.1:4173  «This page couldn't load»
+```
+
+Mismo navegador, misma máquina, mismo Node. Lo único distinto: **el origen**
+`127.0.0.1:4173`. Y ahí había un **service worker** registrado por la propia app
+(`public/sw.js`, se registraba para cachear el icono y el manifiesto).
+
+Un service worker atascado intercepta la navegación: el navegador le pide el
+HTML, el SW falla, y el navegador pinta su página de error. Recargar no sirve
+—el que falla es el SW, y el SW sólo se actualiza *después* de una navegación
+correcta—. Es un círculo del que no se sale solo.
+
+Se elimina el service worker: no aportaba nada (es una app local, siempre hay
+red) y era el único componente capaz de romper la carga del HTML. En su lugar,
+`layout.tsx` da de baja cualquier SW que estuviera registrado y borra sus cachés,
+así que quien tenga el atasco se cura al entrar una vez.
+
+Y el `.bat` ahora abre **`http://localhost:4173`** en vez de
+`http://127.0.0.1:4173`: `localhost` y `127.0.0.1` son **orígenes distintos**
+para el navegador, así que no hereda el atasco del otro. La comprobación de
+«¿ya responde?» sigue haciéndose contra `127.0.0.1`, que es IPv4 y nunca falla.
+
+### El texto raro `0óÇü0óÇü` del lanzador
+
+No era un virus ni un archivo corrupto: el `.bat` estaba guardado en UTF-8 y la
+consola de Windows en español lo lee como CP850. Las rayas `─────` y los acentos
+se convertían en eso. Ahora `iniciar_linyue.bat` es **ASCII puro** (0 caracteres
+fuera de ASCII, comprobado) y se lee bien en cualquier consola.
+
+```
+next build ✓ · vitest 466 · v1.8.2
+```
