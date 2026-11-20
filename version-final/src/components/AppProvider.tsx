@@ -1,5 +1,6 @@
 "use client";
 // Estado global de la app: cola por SSE, motores, toasts que nacen de la isla, tema y sonido.
+import { emitPref, guardarModo, guardarSilencio, guardarTema, mutedSnap, subscribePref, temaSnap, themeSnap } from "@/lib/client/prefs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { setMuted, sfx } from "@/lib/client/sound";
 import { avisar } from "@/lib/client/notify";
@@ -25,36 +26,6 @@ interface Ctx {
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const c = useContext(C); if (!c) throw new Error("AppProvider ausente"); return c; };
-
-// ── Preferencias locales (tema/sonido) sobre localStorage vía useSyncExternalStore.
-// getServerSnapshot fijo ("dark"/false): el primer render de hidratación coincide con
-// el SSR (sin flash ni mismatch de hidratación); getSnapshot lee el valor real en cliente.
-const emitPref = () => { if (typeof window !== "undefined") dispatchEvent(new Event("ly-pref")); };
-function subscribePref(cb: () => void) {
-  const h = () => cb();
-  addEventListener("ly-pref", h);
-  addEventListener("storage", h); // sync entre pestañas
-  return () => { removeEventListener("ly-pref", h); removeEventListener("storage", h); };
-}
-const themeSnap = (): "dark" | "light" => {
-  if (typeof window === "undefined") return "dark";
-  const t = localStorage.getItem("ly-theme") as "dark" | "light" | null;
-  return t ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-};
-// ── Tema con color propio ────────────────────────────────────────────────────
-// Se guarda en localStorage como JSON y se aplica escribiendo variables CSS en
-// <html>. Así el cambio es instantáneo (sin POST ni recarga) y cada navegador
-// puede tener el suyo. `getServerSnapshot` fijo para no romper la hidratación.
-const TEMA_KEY = "ly-tema";
-const temaSnap = (): Tema => {
-  if (typeof window === "undefined") return TEMA_DEFECTO;
-  try { return normalizarTema(JSON.parse(localStorage.getItem(TEMA_KEY) ?? "null")); } catch { return TEMA_DEFECTO; }
-};
-const guardarTema = (t: Tema) => {
-  try { localStorage.setItem(TEMA_KEY, JSON.stringify(t)); } catch {}
-  emitPref();
-};
-const mutedSnap = (): boolean => typeof window !== "undefined" && localStorage.getItem("ly-muted") === "1";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<JobView[]>([]);
@@ -103,7 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
-    const apply = () => { document.documentElement.classList.toggle("light", next === "light"); localStorage.setItem("ly-theme", next); emitPref(); };
+    const apply = () => { document.documentElement.classList.toggle("light", next === "light"); guardarModo(next); };
     const d = document as Document & { startViewTransition?: (cb: () => void) => unknown };
     if (d.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) d.startViewTransition(apply); else apply();
     sfx.pop();
@@ -112,8 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleMute = useCallback(() => {
     const next = !muted;
     setMuted(next); // módulo de sonido
-    localStorage.setItem("ly-muted", next ? "1" : "0");
-    emitPref();
+    guardarSilencio(next);
   }, [muted]);
 
   const rescan = useCallback(async () => {

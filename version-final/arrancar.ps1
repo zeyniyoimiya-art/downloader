@@ -23,7 +23,7 @@ function Diag([string]$t) {
 }
 
 Write-Host ""
-Write-Host "  Linyue Studio  (v1.8.4)"
+Write-Host "  Linyue Studio  (v1.8.5)"
 Write-Host "  ======================"
 Write-Host ""
 

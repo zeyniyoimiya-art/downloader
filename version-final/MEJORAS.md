@@ -783,3 +783,86 @@ un navegador rechace y un `curl` acepte.
 
 Los informes (`arranque.log`, `servidor-*.log`, `diagnostico.txt`) quedan en
 `.gitignore`: llevan rutas del equipo y respuestas HTTP, y son para el usuario.
+
+---
+
+## Fase 18.5 · «This page couldn't load» era NUESTRA pantalla de error (v1.8.5)
+
+Tres versiones buscando el fallo en el sitio equivocado: el service worker, el
+puerto, el proxy, el antivirus… hasta que se probó como hay que probar, con un
+**navegador de verdad** (Chromium headless, Playwright) contra el servidor
+recién compilado:
+
+```
+=== http://127.0.0.1:4173/ ===
+HTTP: 200
+Título: Linyue · Descargador Universal Local
+H1: This page couldn't load          ← ¡es lo que se pintaba en pantalla!
+Errores JS: Error: Minified React error #185
+```
+
+El servidor respondía 200 con el HTML correcto. La que fallaba era la app **al
+arrancar en el navegador**, y el cartel «This page couldn't load / Reload to try
+again, or go back» que parecía de Chrome es en realidad **la pantalla de error
+por defecto de Next.js**. Por eso aparecía en todos los puertos, en los dos
+hosts y con cualquier proxy: no era red, era React.
+
+### La causa
+
+En la fase 17 el color del tema pasó a leerse de `localStorage` con
+`useSyncExternalStore`. React compara el valor de `getSnapshot()` con
+`Object.is`; si devuelve un **objeto nuevo** en cada llamada, entiende que el
+store cambió en cada render y vuelve a renderizar… para siempre:
+
+```
+[error] The result of getSnapshot should be cached to avoid an infinite loop
+[error] Maximum update depth exceeded. (React #185)
+```
+
+`temaSnap()` hacía `normalizarTema(JSON.parse(...))`, y `normalizarTema` **siempre
+construye un objeto nuevo**. En cada render, un objeto distinto → bucle infinito
+→ error boundary → «This page couldn't load». Al ser del `AppProvider` (el
+layout raíz), se llevaba por delante **todas** las páginas.
+
+Encaja con lo que contabas: «estaba funcional y de la nada salió esa cosa» —
+empezó en la v1.7.0, la del color editable.
+
+### El arreglo
+
+`src/lib/client/prefs.ts` (nuevo) saca las preferencias del componente y
+**cachea el tema por el texto crudo de `localStorage`**: mientras no cambie lo
+guardado, `temaSnap()` devuelve exactamente la misma referencia. El modo y el
+silencio son cadenas y booleanos, así que no necesitan nada. `AppProvider` queda
+más corto y sólo consume.
+
+### Cómo se comprobó
+
+Navegador real, build de producción, las seis rutas:
+
+```
+/            200  H1 «Baja lo que quieras, con ficha completa.»   0 errores  0 peticiones fallidas
+/recientes   200  H1 «Recientes»                                 0 errores  0 peticiones fallidas
+/ajustes     200  H1 «Ajustes»                                   0 errores  0 peticiones fallidas
+/estadisticas 200 H1 «Todavía no hay nada que contar»            0 errores  0 peticiones fallidas
+/taller      200  H1 «Taller»                                    0 errores  0 peticiones fallidas
+/cookies     200  H1 «Cookies»                                   0 errores  0 peticiones fallidas
+```
+
+Y el tema, que era el sospechoso: acento de fábrica `#e1122b`, se cambia el modo
+claro/oscuro y responde, se elige **Jade** en Ajustes y `--acento` pasa a
+`#10b981` al instante, sin errores.
+
+### La prueba que impide que vuelva
+
+`tests/prefs.test.ts` (10 casos). El principal es de una línea:
+
+```ts
+expect(temaSnap()).toBe(temaSnap());   // ¿misma referencia?
+```
+
+Se comprobó que **falla** con la versión rota (2 de 10 en rojo) y pasa con el
+arreglo: una prueba que no puede fallar no sirve de nada.
+
+```
+next build ✓ · tsc 0 · eslint 0 · vitest 476 · navegador real ✓ · v1.8.5
+```
