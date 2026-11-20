@@ -751,3 +751,35 @@ de control que levanta en el 8099.
 
 ASCII puro, como el lanzador. Y `iniciar_linyue.bat` documenta cómo cambiar de
 puerto con una línea.
+
+---
+
+## Fase 18.4 · El arranque se cura solo: cinco puertos y sin compresión (v1.8.4)
+
+Seguía sin cargar, también por `localhost`, así que no era el service worker.
+Lo que distingue el caso que funciona del que no:
+
+| Prueba | Resultado |
+|---|---|
+| Servidor Node mínimo en `127.0.0.1:8099` | **carga bien en el navegador** |
+| `next start` en `127.0.0.1:4173` / `localhost:4173` | «This page couldn't load» |
+
+Mismo navegador, misma máquina. O el puerto está marcado por algo (antivirus,
+firewall, el propio navegador) o es la respuesta del servidor de Next la que se
+rechaza. En vez de seguir preguntando, el arranque **rodea el problema**:
+
+`arrancar.ps1` (nuevo) compila si hace falta y prueba **4173 → 3000 → 8099 →
+5500 → 8080**: levanta el servidor en el primero, comprueba de verdad que
+`/api/health` contesta **200** (no que «diga Ready»), y si en 40 s no contesta,
+lo cierra y pasa al siguiente. Abre el navegador en el primero que funcione y
+deja el detalle en `arranque.log`. Si ninguno responde, lanza el diagnóstico
+solo. `iniciar_linyue.bat` pasa a ser una llamada a ese script, con el arranque
+clásico como red de seguridad si PowerShell fallara.
+
+Y `next.config.ts` estrena `compress: false`: es una app local, comprimir no
+ahorra nada en loopback y sí añade una pieza al camino crítico (negociar
+`Accept-Encoding`, comprimir, descomprimir) capaz de producir una respuesta que
+un navegador rechace y un `curl` acepte.
+
+Los informes (`arranque.log`, `servidor-*.log`, `diagnostico.txt`) quedan en
+`.gitignore`: llevan rutas del equipo y respuestas HTTP, y son para el usuario.

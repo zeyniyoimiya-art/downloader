@@ -23,3 +23,10 @@ tests/e2e-*.mjs
 _*.log
 _*.json
 _*.txt
+
+# ── Informes del arranque y del diagnóstico (fase 18.3+) ────────────────────
+# Contienen rutas del equipo y respuestas HTTP; son para el usuario, no para git.
+arranque.log
+servidor-*.log
+servidor-*.err
+diagnostico.txt
