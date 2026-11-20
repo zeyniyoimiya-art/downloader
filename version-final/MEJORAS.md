@@ -725,3 +725,29 @@ fuera de ASCII, comprobado) y se lee bien en cualquier consola.
 ```
 next build ✓ · vitest 466 · v1.8.2
 ```
+
+---
+
+## Fase 18.3 · Instrumento de medida para «el servidor dice Ready y no carga» (v1.8.3)
+
+Seguía fallando también por `localhost`, así que la hipótesis del service
+worker quedaba descartada: el que no llega es el navegador al servidor de Next,
+mientras un servidor Node mínimo sí se ve. Para dejar de adivinar se añade
+**`diagnostico.bat`**: doble clic con el servidor arrancado y escribe
+`diagnostico.txt` con
+
+1. Node, npm y versión de Windows;
+2. quién escucha en el puerto (`netstat`);
+3. conexión **TCP pura** (sin HTTP) — distingue «no hay nadie» de «responde mal»;
+4. `curl` a `/api/health` y a `/`, con **código, bytes y `Content-Type`**, más las
+   cabeceras completas y las primeras etiquetas del HTML recibido;
+5. lo mismo por `localhost`;
+6. un **servidor Node mínimo en el 8099** como control: si ese sí se ve y el de
+   Next no, el culpable es Next; si tampoco, es la red o el navegador;
+7. las IPv4 del equipo y el **proxy del sistema** (`ProxyEnable`/`ProxyServer`).
+
+Es de sólo lectura: no modifica el proyecto, no borra nada y cierra el servidor
+de control que levanta en el 8099.
+
+ASCII puro, como el lanzador. Y `iniciar_linyue.bat` documenta cómo cambiar de
+puerto con una línea.

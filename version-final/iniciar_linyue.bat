@@ -12,10 +12,12 @@ REM ---------------------------------------------------------------------------
 setlocal
 title Linyue Studio
 cd /d "%~dp0"
+REM  Si alguna vez la app no carga por este puerto (antivirus, firewall),
+REM  cambia el numero de la linea siguiente por 3000 y guarda.
 set "PUERTO=4173"
 
 echo.
-echo  Linyue Studio  (v1.8.2)
+echo  Linyue Studio  (v1.8.3)
 echo  ======================
 echo.
 
