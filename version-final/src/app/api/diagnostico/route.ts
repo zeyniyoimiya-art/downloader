@@ -29,8 +29,17 @@ export async function GET() {
       existe: !!r,
     };
   });
+  // BUILD_ID: el identificador que genera `next build`. Lo usa el lanzador para
+  // saber si el servidor que ya está escuchando es ESTA compilación o una vieja
+  // que quedó abierta (con la app anterior todavía dentro).
+  const buildId = (() => {
+    for (const base of [process.cwd(), path.join(process.cwd(), "version-final")]) {
+      try { return fs.readFileSync(path.join(base, ".next", "BUILD_ID"), "utf8").trim(); } catch {}
+    }
+    return null;
+  })();
   return Response.json({
-    app: { version: VERSION, build: BUILD, plataforma: process.platform, node: process.version },
+    app: { version: VERSION, build: BUILD, buildId, plataforma: process.platform, node: process.version },
     carpetas: {
       datos: DATA_DIR,
       salida,

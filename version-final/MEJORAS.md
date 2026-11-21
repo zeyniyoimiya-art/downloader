@@ -866,3 +866,42 @@ arreglo: una prueba que no puede fallar no sirve de nada.
 ```
 next build ✓ · tsc 0 · eslint 0 · vitest 476 · navegador real ✓ · v1.8.5
 ```
+
+---
+
+## Fase 18.6 · El servidor viejo seguía sirviendo la app vieja (v1.8.6)
+
+Síntoma: se actualiza, se compila, y el navegador sigue enseñando la app
+anterior (o su pantalla de error). La causa estaba en mi lanzador, y era de
+manual: al arrancar preguntaba «¿hay algo escuchando en el 4173?» y, si lo
+había, **lo reutilizaba**. Si esa ventana era de una versión anterior —o de la
+otra copia del proyecto, la de Descargas—, se abría el navegador contra el
+build VIEJO. Compilar de nuevo no servía de nada: el proceso antiguo seguía en
+memoria con su código.
+
+Ahora el lanzador **pregunta qué compilación está sirviendo** cada puerto
+(`/api/diagnostico` publica el `BUILD_ID`, el identificador que genera
+`next build`) y lo compara con el de la carpeta en la que está:
+
+| Lo que encuentra | Lo que hace |
+|---|---|
+| Misma `BUILD_ID` | la reutiliza y abre el navegador |
+| `BUILD_ID` distinta (versión vieja, otra carpeta) | **cierra ese proceso** y arranca el nuevo |
+| Nada escuchando | arranca ahí |
+
+El proceso se identifica por el puerto que tiene abierto (`Get-NetTCPConnection`
+y, si el cmdlet no está, `netstat -ano`), así que no se lleva por delante otros
+programas de Node del equipo.
+
+### Y sobre las dos carpetas
+
+La app no depende de en qué carpeta esté: los datos (configuración, historial,
+miniaturas) viven en `%USERPROFILE%\.linyue`, no junto al código. Lo único que
+se cruza entre las dos copias es **el puerto**, y eso es justo lo que ahora se
+detecta y se cierra. Aun así, lo sano es quedarse con una sola copia (la del
+repo) y borrar la vieja: dos instalaciones del mismo programa en el mismo
+puerto sólo traen confusión.
+
+```
+next build ✓ · tsc 0 · eslint 0 · vitest 476 · v1.8.6
+```
